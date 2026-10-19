@@ -44,6 +44,14 @@ with sync_playwright() as p:
             route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
                           body=json.dumps({"data": [{"id": "grok-4.7"}, {"id": "grok-loaded-extra"}]}))
             return
+        body = json.loads(route.request.post_data or "{}")
+        last = (body.get("messages") or [{}])[-1].get("content") or ""
+        if body.get("stream") and "Live" in last:
+            sent["stream_body"] = body
+            words = ["Guten ", "Abend, ", "Sir. ", "Das ist ", "eine ", "Live-Antwort. ", "Satz ", "drei!"]
+            sse = "".join("data: " + json.dumps({"choices": [{"index": 0, "delta": {"content": w}}]}) + "\n\n" for w in words) + "data: [DONE]\n\n"
+            route.fulfill(status=200, content_type="text/event-stream", headers={"access-control-allow-origin": "*"}, body=sse)
+            return
         fake_api(route)
     page.route("https://api.x.ai/**", fake_xai)
     gem = {}
@@ -169,6 +177,34 @@ with sync_playwright() as p:
     check("KI-Antwort angezeigt", "Witz" in reply)
     check("KI: Name+Datum im System-Prompt", "Du bist Friday" in sent["body"]["messages"][0]["content"] and "Aktuelles Datum" in sent["body"]["messages"][0]["content"])
     check("KI: Modell grok-4.7 + Bearer", sent["body"]["model"] == "grok-4.7" and sent["auth"] == "Bearer xai-test-123")
+
+    check("KI: stream:true gesendet, JSON-Antwort trotzdem ok", sent["body"].get("stream") is True)
+
+    # 4a) Live-Antwort (SSE-Streaming) + satzweise Sprachausgabe
+    page.evaluate("""() => {
+      window.__streamSteps = 0; window.__sawStreaming = false;
+      new MutationObserver((recs) => {
+        for (const r of recs) {
+          const m = r.target.closest ? r.target.closest('.msg') : r.target.parentElement && r.target.parentElement.closest('.msg');
+          if (m && m.classList.contains('streaming')) { window.__streamSteps++; window.__sawStreaming = true; }
+        }
+      }).observe(document.querySelector('#chat'), { childList: true, subtree: true, characterData: true });
+      window.__speakCalls = [];
+    }""")
+    page.click("#btn-mute"); page.wait_for_timeout(150)  # Sprachausgabe kurz an
+    reply = ask("Bitte eine Live-Antwort", 1500)
+    try:
+        page.wait_for_function("window.__speakCalls.length >= 1", timeout=6000)
+    except Exception:
+        pass
+    spoken = page.evaluate("window.__speakCalls.map(c => c.text)")
+    page.click("#btn-mute"); page.wait_for_timeout(150)  # wieder stumm
+    check("Live: gestreamte Antwort vollständig", reply.strip().endswith("Guten Abend, Sir. Das ist eine Live-Antwort. Satz drei!"))
+    check("Live: Blase wuchs schrittweise", page.evaluate("window.__sawStreaming") and page.evaluate("window.__streamSteps") >= 4)
+    check("Live: Blase abgeschlossen", page.locator(".msg.streaming").count() == 0)
+    check("Live: Satzweise Sprachausgabe (erster Satz einzeln)", len(spoken) >= 1 and spoken[0] == "Guten Abend, Sir.")
+    print("INFO gesprochene Sätze:", spoken)
+    check("Live: nur eine Antwort-Blase", page.locator(".msg.assistant", has_text="Live-Antwort").count() == 1)
 
     # 4b) Gemini als Anbieter (gemockt)
     page.click("#btn-settings"); page.wait_for_timeout(300)

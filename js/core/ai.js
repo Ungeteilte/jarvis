@@ -160,6 +160,7 @@ export async function requestWithRetry(cfg, path, opts = {}) {
     sleepFn,
     body,
     dynamicFallbacks,
+    requestFn = requestOnce,
     ...rest
   } = opts;
   const providerId = cfg.providerId || cfg.id;
@@ -199,7 +200,7 @@ export async function requestWithRetry(cfg, path, opts = {}) {
     const attemptBody = { ...body, model };
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const data = await requestOnce(cfg, path, { ...rest, body: attemptBody });
+        const data = await requestFn(cfg, path, { ...rest, body: attemptBody });
         return { data, model, usedFallback: model !== primary };
       } catch (e) {
         lastErr = e;
@@ -277,6 +278,216 @@ export async function askAI(cfg, systemPrompt, history, opts = {}) {
     text += ` (Antwort über Ersatzmodell ${model}, weil das gewünschte gerade überlastet oder nicht verfügbar war.)`;
   }
   return text;
+}
+
+
+// ===================== Streaming (SSE) =====================
+
+/** Gibt true zurück, wenn die Laufzeit Streaming per fetch-Body unterstützt. */
+export function canStream() {
+  return typeof globalThis.ReadableStream === 'function' && typeof globalThis.TextDecoder === 'function';
+}
+
+/**
+ * Liest einen SSE-Body (text/event-stream) und liefert die `data:`-Payloads.
+ * Kommentare (`:`) und leere Zeilen werden ignoriert; `[DONE]` beendet.
+ */
+export async function* readSSE(body, { onChunk } = {}) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      onChunk?.();
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.search(/\r?\n\r?\n/)) !== -1) {
+        const rawEvent = buf.slice(0, idx);
+        buf = buf.slice(idx).replace(/^\r?\n\r?\n/, '');
+        const data = rawEvent.split(/\r?\n/)
+          .filter((l) => l.startsWith('data:'))
+          .map((l) => l.slice(5).replace(/^ /, ''))
+          .join('\n');
+        if (!data) continue;
+        if (data.trim() === '[DONE]') return;
+        yield data;
+      }
+    }
+    // Rest ohne abschließende Leerzeile
+    const tail = buf.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('\n');
+    if (tail && tail !== '[DONE]') yield tail;
+  } finally {
+    try { reader.releaseLock(); } catch { /* egal */ }
+  }
+}
+
+/** Setzt OpenAI-kompatible Stream-Deltas (content + tool_calls) zusammen. */
+export function createDeltaAssembler() {
+  let content = '';
+  const calls = []; // nach index
+  let finish = null;
+  return {
+    push(chunk) {
+      const choice = chunk?.choices?.[0];
+      if (!choice) return { text: '' };
+      const d = choice.delta || choice.message || {};
+      if (choice.finish_reason) finish = choice.finish_reason;
+      let text = '';
+      if (typeof d.content === 'string' && d.content) { content += d.content; text = d.content; }
+      for (const tc of d.tool_calls || []) {
+        const i = Number.isInteger(tc.index) ? tc.index : calls.length;
+        const cur = calls[i] || (calls[i] = { id: '', type: 'function', function: { name: '', arguments: '' } });
+        if (tc.id) cur.id = tc.id;
+        if (tc.type) cur.type = tc.type;
+        if (tc.function?.name) cur.function.name += tc.function.name;
+        if (tc.function?.arguments != null) {
+          cur.function.arguments += typeof tc.function.arguments === 'string'
+            ? tc.function.arguments : JSON.stringify(tc.function.arguments);
+        }
+      }
+      return { text, toolCall: (d.tool_calls || []).length > 0 };
+    },
+    get content() { return content; },
+    result() {
+      const tool_calls = calls.filter(Boolean).map((c, i) => ({ ...c, id: c.id || `call_${i + 1}` }));
+      const message = { role: 'assistant', content: content || (tool_calls.length ? null : '') };
+      if (tool_calls.length) message.tool_calls = tool_calls;
+      return { choices: [{ index: 0, message, finish_reason: finish || (tool_calls.length ? 'tool_calls' : 'stop') }] };
+    }
+  };
+}
+
+/**
+ * Ein Streaming-Request. Liefert am Ende dieselbe Form wie ohne Streaming
+ * ({ choices:[{ message }] }), meldet unterwegs onDelta({ type:'text', text }).
+ * Fehlercodes: 'http' (wie requestOnce), 'nostream' (kein lesbarer Body),
+ * 'stream-broken' (Abbruch nach ersten Daten), 'aborted', 'timeout', 'network'.
+ */
+export async function requestStreamOnce(cfg, path, {
+  body, fetchFn = globalThis.fetch, timeoutMs = 60000, idleTimeoutMs = 30000, onDelta, signal
+} = {}) {
+  if (!cfg.baseUrl) throw new AIError('Keine Basis-URL eingestellt.', 'config');
+  if (!cfg.apiKey) throw new AIError('Kein API-Schlüssel hinterlegt. Bitte in den Einstellungen eintragen.', 'nokey');
+  if (signal?.aborted) throw new AIError('Abgebrochen.', 'aborted');
+  const ctrl = new AbortController();
+  let timedOut = false;
+  let timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, timeoutMs);
+  const resetIdle = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; ctrl.abort(); }, idleTimeoutMs); };
+  const onAbort = () => ctrl.abort();
+  signal?.addEventListener?.('abort', onAbort);
+  let emitted = false;
+  const fail = (e) => {
+    if (e instanceof AIError) return e;
+    if (signal?.aborted) return new AIError('Abgebrochen.', 'aborted');
+    if (timedOut) return new AIError('Zeitüberschreitung – der Server antwortet nicht.', 'timeout');
+    if (emitted) return new AIError('Die Live-Antwort wurde unterbrochen.', 'stream-broken');
+    return new AIError('Netzwerkfehler oder vom Anbieter blockiert (CORS). Internetverbindung und Basis-URL prüfen.', 'network');
+  };
+  try {
+    let res;
+    try {
+      res = await fetchFn(cfg.baseUrl + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${cfg.apiKey}` },
+        body: JSON.stringify({ ...body, stream: true }),
+        signal: ctrl.signal
+      });
+    } catch (e) { throw fail(e); }
+
+    const ctype = String(res.headers?.get?.('content-type') || '');
+    if (!res.ok) {
+      let data = null;
+      try { data = await res.json(); } catch { /* keine JSON-Antwort */ }
+      if (Array.isArray(data)) data = data[0];
+      const detail = data?.error?.message || data?.error || data?.message || res.statusText;
+      const detailStr = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      throw new AIError(friendlyHttpError(res.status, detailStr), 'http', { status: res.status, detail: detailStr, model: body?.model });
+    }
+    // Anbieter ignoriert stream:true und schickt normales JSON → direkt nutzen
+    if (/json/i.test(ctype) && !/event-stream/i.test(ctype)) {
+      const data = await res.json();
+      const text = data?.choices?.[0]?.message?.content;
+      if (text) { emitted = true; onDelta?.({ type: 'text', text: String(text) }); }
+      return data;
+    }
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      throw new AIError('Streaming wird hier nicht unterstützt.', 'nostream');
+    }
+    const asm = createDeltaAssembler();
+    try {
+      for await (const payload of readSSE(res.body, { onChunk: resetIdle })) {
+        let chunk;
+        try { chunk = JSON.parse(payload); } catch { continue; }
+        if (chunk?.error) {
+          const msg = chunk.error.message || JSON.stringify(chunk.error);
+          throw new AIError(friendlyHttpError(chunk.error.code || 500, msg), emitted ? 'stream-broken' : 'http',
+            { status: Number(chunk.error.code) || 500, detail: msg, model: body?.model });
+        }
+        const { text } = asm.push(chunk);
+        if (text) { emitted = true; onDelta?.({ type: 'text', text }); }
+      }
+    } catch (e) { throw fail(e); }
+    return asm.result();
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener?.('abort', onAbort);
+  }
+}
+
+/**
+ * Streaming-Variante von askAIRaw: gleiche Retry-/Fallback-Logik (503/429/404),
+ * meldet Teiltexte über opts.onDelta. Bei Problemen mit dem Streaming selbst
+ * (kein ReadableStream, Abbruch mittendrin, 400 wegen stream) automatischer
+ * Rückfall auf den normalen Weg; vorher onDelta({ type:'reset' }).
+ * Ergebnis: { data, model, usedFallback, streamed }
+ */
+export async function askAIStream(cfg, messages, opts = {}) {
+  const onDelta = opts.onDelta || (() => {});
+  if (opts.stream === false || !canStream()) {
+    const out = await askAIRaw(cfg, messages, opts);
+    return { ...out, streamed: false };
+  }
+  const body = { model: cfg.model, messages };
+  if (opts.tools?.length) {
+    body.tools = opts.tools;
+    body.tool_choice = opts.tool_choice || 'auto';
+  }
+  let emitted = false;
+  const relay = (d) => { if (d?.type === 'text') emitted = true; onDelta(d); };
+  try {
+    const out = await requestWithRetry(
+      { ...cfg, providerId: cfg.providerId || cfg.id },
+      '/chat/completions',
+      {
+        method: 'POST',
+        body,
+        fetchFn: opts.fetchFn,
+        timeoutMs: opts.timeoutMs,
+        idleTimeoutMs: opts.idleTimeoutMs,
+        retries: opts.retries ?? 2,
+        backoffSchedule: opts.backoffSchedule || [1000, 3000],
+        sleepFn: opts.sleepFn,
+        dynamicFallbacks: opts.dynamicFallbacks,
+        skipModelDiscovery: opts.skipModelDiscovery,
+        signal: opts.signal,
+        onDelta: relay,
+        requestFn: requestStreamOnce
+      }
+    );
+    return { ...out, streamed: true };
+  } catch (e) {
+    if (e?.code === 'aborted') throw e;
+    const streamProblem = ['nostream', 'stream-broken', 'network'].includes(e?.code)
+      || (e?.code === 'http' && e.status === 400 && /stream/i.test(e.detail || ''));
+    if (!streamProblem) throw e;
+    if (emitted) onDelta({ type: 'reset' });
+    const out = await askAIRaw(cfg, messages, { ...opts, skipModelDiscovery: true });
+    const text = out.data?.choices?.[0]?.message?.content;
+    if (text) onDelta({ type: 'text', text: String(text) });
+    return { ...out, streamed: false, streamFallback: e.code };
+  }
 }
 
 /** Listet verfügbare Modelle (GET /models). */

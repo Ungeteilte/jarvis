@@ -8,6 +8,7 @@ import { createTimerManager } from './core/timers.js';
 import { createAssistant } from './core/assistant.js';
 import { createWakeController } from './core/wake-controller.js';
 import { formatDuration } from './core/skills.js';
+import { createSentenceChunker } from './core/sentences.js';
 import { createWebStorageAdapter } from './adapters/web-storage.js';
 import { createWebTTS } from './adapters/web-tts.js';
 import { createWebSTT } from './adapters/web-stt.js';
@@ -94,6 +95,40 @@ async function say(text) {
   }
 }
 
+/**
+ * Satzweise Sprachausgabe für gestreamte Antworten: fertige Sätze werden
+ * nacheinander gesprochen, während der Rest noch ankommt (Web + nativ).
+ */
+function createSentenceSpeaker(myTurn) {
+  const chunker = createSentenceChunker();
+  let chain = Promise.resolve();
+  let spoken = '';
+  let cancelled = false;
+  let started = false;
+  const enqueue = (sentences) => {
+    for (const s of sentences) {
+      spoken += (spoken ? ' ' : '') + s;
+      chain = chain.then(async () => {
+        if (cancelled || myTurn !== turn || !settings.speak || !tts.isSupported()) return;
+        if (!started) { started = true; wake.pause(); }
+        view.setOrbState('speaking');
+        try { await tts.speak(s, persona); } catch { /* nächster Satz */ }
+      });
+    }
+  };
+  return {
+    push(text) { if (!cancelled) enqueue(chunker.push(text)); },
+    reset() { chunker.reset(); cancelled = true; tts.cancel(); },
+    get spoken() { return spoken; },
+    get cancelled() { return cancelled; },
+    async finish() {
+      if (!cancelled) enqueue(chunker.flush());
+      await chain;
+      if (started) wake.resume();
+    }
+  };
+}
+
 let turn = 0; // zählt Eingaben, damit eine alte Sprachausgabe keine neue stört
 async function handleInput(text) {
   const input = String(text || '').trim();
@@ -105,17 +140,47 @@ async function handleInput(text) {
   view.addMessage({ role: 'user', text: input });
   view.setOrbState('thinking');
   view.setStatus('Einen Moment …');
-  const hideTyping = view.showTyping();
+  let hideTyping = view.showTyping();
   let reply = null;
+  let bubble = null;   // wachsende Blase (nur bei Streaming)
+  let speaker = null;  // satzweise Sprachausgabe
+  let streamedText = '';
+  const onDelta = (d) => {
+    if (myTurn !== turn) return;
+    if (d.type === 'text') {
+      if (!bubble) {
+        hideTyping(); hideTyping = () => {};
+        bubble = view.addStreamingMessage();
+        speaker = createSentenceSpeaker(myTurn);
+        view.setStatus('');
+      }
+      bubble.append(d.text);
+      streamedText += d.text;
+      speaker.push(d.text);
+    } else if (d.type === 'reset') {
+      streamedText = '';
+      bubble?.reset();
+      speaker?.reset();
+      speaker = null; bubble?.remove(); bubble = null;
+    } else if (d.type === 'tool') {
+      view.setStatus(`Werkzeug: ${d.name} …`);
+    }
+  };
   try {
-    reply = await assistant.process(input);
+    reply = await assistant.process(input, { onDelta });
   } catch (e) {
     showError(e.message);
   } finally {
     hideTyping();
     busy = false; // neue Eingaben sind ab jetzt wieder möglich (unterbrechen die Sprachausgabe)
   }
-  if (reply) {
+  if (reply && bubble && !reply.confirm && streamedText.trim() === String(reply.text).trim()) {
+    // Live gestreamt: Blase abschließen, restliche Sätze sprechen
+    bubble.finish(reply);
+    view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
+    await speaker.finish();
+  } else if (reply) {
+    if (bubble) { speaker?.reset(); bubble.remove(); }
     view.addMessage(reply);
     if (reply.confirm) {
       view.addConfirmCard(reply.confirm, {
