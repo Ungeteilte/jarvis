@@ -143,3 +143,4 @@ output { color: var(--text); }
 
 /* Toast */
 .toast { position: fixed; left: 50%; bottom: 100px; transform: translateX(-50%); background: var(--bg2); border: 1px solid var(--cyan); border-radius: 12px; padding: 10px 16px; z-index: 50; box-shadow: 0 0 20px var(--cyan-soft); max-width: 90vw; text-align: center; }
+.hint a { color: var(--cyan); }

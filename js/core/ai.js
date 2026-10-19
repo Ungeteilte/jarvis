@@ -30,6 +30,7 @@ async function request(cfg, path, { method = 'GET', body, fetchFn = globalThis.f
   let data = null;
   try { data = await res.json(); } catch { /* keine JSON-Antwort */ }
   if (!res.ok) {
+    if (Array.isArray(data)) data = data[0]; // Gemini liefert Fehler teils als Liste
     const detail = data?.error?.message || data?.error || data?.message || res.statusText;
     const hint = res.status === 401 || res.status === 403 ? ' (API-Schlüssel ungültig?)'
       : res.status === 404 ? ' (Modellname oder URL falsch?)'
@@ -61,5 +62,7 @@ export async function askAI(cfg, systemPrompt, history, opts = {}) {
 /** Listet verfügbare Modelle (GET /models). */
 export async function listModels(cfg, opts = {}) {
   const data = await request(cfg, '/models', opts);
-  return (data?.data || []).map((m) => m.id).filter(Boolean).sort();
+  // Gemini liefert IDs als "models/gemini-…" – Präfix entfernen
+  const ids = (data?.data || []).map((m) => String(m.id || '').replace(/^models\//, '')).filter(Boolean);
+  return [...new Set(ids)].sort();
 }

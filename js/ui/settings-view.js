@@ -1,5 +1,5 @@
 // Einstellungsseite: Formular befüllen, auslesen, Buttons verdrahten.
-import { $, fillVoiceSelect, toast } from './view.js';
+import { $, fillVoiceSelect, toast, renderKeyHint } from './view.js';
 import { PROVIDERS, loadSettings, saveSettings, resolveProvider } from '../core/settings.js';
 import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from '../core/persona.js';
 import { askAI, listModels } from '../core/ai.js';
@@ -34,6 +34,7 @@ export function createSettingsView({ store, tts, onSaved, onClearChat }) {
     f.model.placeholder = p.defaultModel || 'Modellname';
     f.modelList.replaceChildren(...p.models.map((m) => new Option(m, m)));
     f.testResult.textContent = '';
+    renderKeyHint($('#key-hint'), p);
   }
 
   async function refreshVoices() {

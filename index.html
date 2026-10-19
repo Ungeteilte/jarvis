@@ -60,6 +60,7 @@
           <select id="set-provider">
             <option value="xai">xAI (Grok)</option>
             <option value="openai">OpenAI</option>
+            <option value="gemini">Google Gemini (kostenlos)</option>
             <option value="custom">Eigene OpenAI-kompatible URL</option>
           </select>
         </label>
@@ -79,6 +80,7 @@
           </span>
           <datalist id="model-list"></datalist>
         </label>
+        <p id="key-hint" class="hint"></p>
         <p class="hint">🔒 Der Schlüssel wird nur auf diesem Gerät gespeichert (localStorage) und direkt an den gewählten Anbieter gesendet.</p>
         <button id="btn-test" type="button" class="btn">Verbindung testen</button>
         <p id="test-result" class="hint"></p>
@@ -128,6 +130,17 @@
       <label>Stimme
         <select id="ob-voice"><option value="">Automatisch (beste deutsche Stimme)</option></select>
       </label>
+      <label>KI-Anbieter (optional)
+        <select id="ob-provider">
+          <option value="gemini">Google Gemini (kostenlos)</option>
+          <option value="xai">xAI (Grok)</option>
+          <option value="openai">OpenAI</option>
+        </select>
+      </label>
+      <label>API-Schlüssel (optional, später änderbar)
+        <input id="ob-apikey" type="password" placeholder="Schlüssel einfügen" spellcheck="false">
+      </label>
+      <p id="ob-key-hint" class="hint"></p>
       <div class="row">
         <button id="ob-preview" type="button" class="btn">▶ Vorhören</button>
         <button id="ob-done" type="submit" class="btn primary">Los geht's</button>

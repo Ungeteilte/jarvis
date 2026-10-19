@@ -40,11 +40,21 @@ with sync_playwright() as p:
         route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
                       body=json.dumps({"choices": [{"message": {"content": "Selbstverständlich, Sir. Hier ist ein Witz."}}]}))
     page.route("https://api.x.ai/**", fake_api)
+    gem = {}
+    def fake_gemini(route):
+        gem["url"] = route.request.url
+        gem["body"] = json.loads(route.request.post_data or "{}")
+        gem["auth"] = route.request.headers.get("authorization")
+        route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
+                      body=json.dumps({"choices": [{"message": {"content": "Gemini meldet sich zum Dienst."}}]}))
+    page.route("https://generativelanguage.googleapis.com/**", fake_gemini)
 
     # 1) Erster Start → Onboarding
     page.goto(URL)
     page.wait_for_load_state("networkidle")
     check("Onboarding-Dialog beim ersten Start", page.is_visible("#onboarding"))
+    check("Onboarding: Gemini vorausgewählt + Schlüssel-Link", page.input_value("#ob-provider") == "gemini"
+          and page.get_attribute("#ob-key-hint a", "href") == "https://aistudio.google.com/apikey")
     page.screenshot(path=str(SHOTS / "onboarding.png"))
     page.fill("#ob-name", "Jarvis")
     page.click("#ob-done")
@@ -84,6 +94,9 @@ with sync_playwright() as p:
     page.screenshot(path=str(SHOTS / "settings-bottom.png"))
     page.select_option("#set-provider", "openai")
     check("OpenAI-Modell-Platzhalter", page.get_attribute("#set-model", "placeholder") == "gpt-6-luna")
+    page.select_option("#set-provider", "gemini")
+    check("Gemini: Modell-Platzhalter + Hinweis", page.get_attribute("#set-model", "placeholder") == "gemini-3.8-flash"
+          and "keine Kreditkarte" in page.inner_text("#key-hint"))
     page.select_option("#set-provider", "custom")
     check("Basis-URL-Feld bei eigener URL", page.is_visible("#row-baseurl"))
     page.select_option("#set-provider", "xai")
@@ -115,6 +128,20 @@ with sync_playwright() as p:
     check("KI-Antwort angezeigt", "Witz" in reply)
     check("KI: Name+Datum im System-Prompt", "Du bist Friday" in sent["body"]["messages"][0]["content"] and "Aktuelles Datum" in sent["body"]["messages"][0]["content"])
     check("KI: Modell grok-4.7 + Bearer", sent["body"]["model"] == "grok-4.7" and sent["auth"] == "Bearer xai-test-123")
+
+    # 4b) Gemini als Anbieter (gemockt)
+    page.click("#btn-settings"); page.wait_for_timeout(300)
+    page.select_option("#set-provider", "gemini")
+    page.fill("#set-apikey", "fake-gemini-key")
+    page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
+    check("Gemini-Antwort angezeigt", "Gemini meldet sich" in ask("Was ist ein schwarzes Loch?", 1200))
+    check("Gemini: Endpunkt, Modell, Bearer", gem.get("url") == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+          and gem["body"]["model"] == "gemini-3.8-flash" and gem["auth"] == "Bearer fake-gemini-key"
+          and "Du bist Friday" in gem["body"]["messages"][0]["content"])
+    page.click("#btn-settings"); page.wait_for_timeout(300)
+    page.select_option("#set-provider", "xai")
+    check("xAI-Schlüssel nach Anbieterwechsel noch da", page.input_value("#set-apikey") == "xai-test-123")
+    page.click("#btn-back"); page.wait_for_timeout(200)
 
     # 5) Wake-Word-Logik im Browser (Kern-Module, simuliertes Transkript)
     wk = page.evaluate("""async () => {

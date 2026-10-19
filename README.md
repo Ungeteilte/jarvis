@@ -13,7 +13,7 @@ Optimiert für das **Samsung Galaxy A55 5G mit Chrome**.
 | 🔊 Sprachausgabe | Antworten werden vorgelesen; Lautsprecher-Knopf oben schaltet stumm |
 | 👂 Wake-Word | „Hey Jarvis …“ – hört dauerhaft zu, **solange die App offen ist** |
 | 🧑 Name & Stimme | Name frei wählbar (z. B. „Friday“) – gilt auch als Wake-Word; Stimme, Tempo, Tonhöhe einstellbar, mit „Vorhören“ |
-| 🧠 KI-Gehirn | xAI (Grok), OpenAI oder eine eigene OpenAI-kompatible Adresse – mit Ihrem eigenen API-Schlüssel |
+| 🧠 KI-Gehirn | Google Gemini (kostenlos), xAI (Grok), OpenAI oder eine eigene OpenAI-kompatible Adresse – mit Ihrem eigenen API-Schlüssel |
 | ⏰ Ohne KI | Uhrzeit, Datum, Timer, Notizen (funktionieren auch ohne API-Schlüssel) |
 
 ### Beispiel-Sätze (funktionieren ohne KI)
@@ -44,7 +44,7 @@ Das Mikrofon funktioniert im Browser **nur über HTTPS** – GitHub Pages liefer
    `https://IHR-NAME.github.io/jarvis/` – diese im Handy öffnen.
 
 **Updates:** Geänderte Dateien einfach erneut hochladen. Damit das Handy die neue Version sicher lädt,
-in `sw.js` die Zeile `const VERSION = 'jarvis-v1';` hochzählen (`jarvis-v2` …).
+in `sw.js` die Zeile `const VERSION = 'jarvis-v2';` hochzählen (`jarvis-v3` …).
 
 *Alternativen:* Netlify, Cloudflare Pages oder Vercel funktionieren genauso (Ordner hochladen, fertig).
 
@@ -68,9 +68,19 @@ in `sw.js` die Zeile `const VERSION = 'jarvis-v1';` hochzählen (`jarvis-v2` …
 ## 🔑 API-Schlüssel besorgen
 
 Ohne Schlüssel funktionieren nur die lokalen Funktionen (Uhrzeit, Datum, Timer, Notizen).
-Die KI-Anbieter berechnen pro Nutzung (meist wenige Cent pro Tag bei normaler Nutzung). Guthaben/Zahlungsmethode ist nötig.
+xAI und OpenAI berechnen pro Nutzung (meist wenige Cent pro Tag) und brauchen Guthaben. **Google Gemini hat einen kostenlosen Tarif.**
 
-**xAI (Grok) – voreingestellt**
+**Google Gemini – kostenlos, ideal zum Einstieg**
+1. <https://aistudio.google.com/apikey> öffnen und mit dem Google-Konto anmelden.
+2. **„API-Schlüssel erstellen“** (Create API key) antippen – **keine Kreditkarte nötig**.
+3. Schlüssel kopieren (beginnt meist mit `AIza…`).
+4. In Jarvis: ⚙️ → Anbieter **Google Gemini** → Schlüssel einfügen → **Speichern**
+   (oder direkt im Willkommens-Dialog beim ersten Start). Modell leer lassen = `gemini-3.8-flash`.
+5. Hinweis: Im kostenlosen Tarif gelten Anfrage-Limits pro Minute/Tag, und Google darf die Eingaben zur
+   Verbesserung seiner Produkte nutzen. Für Vertrauliches lieber einen bezahlten Tarif verwenden.
+   Bitte die aktuellen Nutzungsbedingungen für Nutzer in der EU in AI Studio prüfen.
+
+**xAI (Grok)**
 1. <https://console.x.ai> öffnen und anmelden.
 2. Guthaben aufladen (Billing), dann **API Keys → Create API Key**.
 3. Schlüssel kopieren (beginnt mit `xai-…`).
@@ -111,6 +121,7 @@ Bei den Anbietern ein **Ausgabenlimit** setzen.
 Browser-Aufrufe direkt an die APIs wurden geprüft (Preflight-Anfrage mit fremder Herkunft):
 - **xAI** `api.x.ai`: erlaubt (`Access-Control-Allow-Origin: *`) ✅
 - **OpenAI** `api.openai.com`: erlaubt (spiegelt die Herkunft, erlaubt `authorization`) ✅
+- **Google Gemini** `generativelanguage.googleapis.com/v1beta/openai` (OpenAI-kompatibel): erlaubt (spiegelt die Herkunft, erlaubt `authorization`) ✅
 - **Eigene URL:** hängt vom Server ab. Meldung „Netzwerkfehler oder vom Anbieter blockiert (CORS)“ → am Server CORS aktivieren.
 
 ---

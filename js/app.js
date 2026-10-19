@@ -2,7 +2,7 @@
 // und Oberfläche (js/ui). Für eine native App werden später nur die
 // Adapter und die UI ersetzt – der Kern bleibt gleich.
 import { createStore } from './core/storage.js';
-import { loadSettings, saveSettings } from './core/settings.js';
+import { loadSettings, saveSettings, PROVIDERS } from './core/settings.js';
 import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from './core/persona.js';
 import { createTimerManager } from './core/timers.js';
 import { createAssistant } from './core/assistant.js';
@@ -195,12 +195,21 @@ async function onboarding() {
   const fillVoices = async () => view.fillVoiceSelect($('#ob-voice'), sortVoices(await tts.listVoices()), persona.voiceId);
   fillVoices();
   tts.onVoicesChanged(fillVoices);
+  const obProvider = $('#ob-provider');
+  obProvider.value = settings.apiKeys[settings.provider] ? settings.provider : 'gemini';
+  const showHint = () => view.renderKeyHint($('#ob-key-hint'), PROVIDERS[obProvider.value]);
+  obProvider.addEventListener('change', showHint);
+  showHint();
   $('#ob-preview').onclick = () => {
     const p = { ...persona, name: sanitizeName($('#ob-name').value), voiceId: $('#ob-voice').value };
     tts.speak(previewSentence(p.name), p);
   };
   dlg.addEventListener('close', () => {
     applyPersona(savePersona(store, { name: $('#ob-name').value, voiceId: $('#ob-voice').value, onboarded: true }));
+    const key = $('#ob-apikey').value.trim();
+    if (key) {
+      settings = saveSettings(store, { provider: obProvider.value, apiKeys: { ...settings.apiKeys, [obProvider.value]: key } });
+    }
     say(greet());
   }, { once: true });
   dlg.showModal();

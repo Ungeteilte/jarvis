@@ -89,6 +89,21 @@ export function toast(text, ms = 3500) {
   setTimeout(() => t.remove(), ms);
 }
 
+/** Zeigt den Hinweis, wo es den Schlüssel gibt (mit Link). */
+export function renderKeyHint(el, provider) {
+  el.replaceChildren();
+  if (!provider) return;
+  el.append(document.createTextNode(provider.keyHint || ''));
+  if (provider.keyUrl) {
+    const a = document.createElement('a');
+    a.href = provider.keyUrl;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = ' → Schlüssel holen';
+    el.append(a);
+  }
+}
+
 /** Füllt ein <select> mit Stimmen (deutsche zuerst). */
 export function fillVoiceSelect(select, voices, selectedId) {
   const auto = select.options[0];
