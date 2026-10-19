@@ -44,7 +44,7 @@ Das Mikrofon funktioniert im Browser **nur über HTTPS** – GitHub Pages liefer
    `https://IHR-NAME.github.io/jarvis/` – diese im Handy öffnen.
 
 **Updates:** Geänderte Dateien einfach erneut hochladen. Damit das Handy die neue Version sicher lädt,
-in `sw.js` die Zeile `const VERSION = 'jarvis-v2';` hochzählen (`jarvis-v3` …).
+in `sw.js` die Zeile `const VERSION = 'jarvis-v3';` hochzählen (`jarvis-v4` …).
 
 *Alternativen:* Netlify, Cloudflare Pages oder Vercel funktionieren genauso (Ordner hochladen, fertig).
 
@@ -75,7 +75,7 @@ xAI und OpenAI berechnen pro Nutzung (meist wenige Cent pro Tag) und brauchen Gu
 2. **„API-Schlüssel erstellen“** (Create API key) antippen – **keine Kreditkarte nötig**.
 3. Schlüssel kopieren (beginnt meist mit `AIza…`).
 4. In Jarvis: ⚙️ → Anbieter **Google Gemini** → Schlüssel einfügen → **Speichern**
-   (oder direkt im Willkommens-Dialog beim ersten Start). Modell leer lassen = `gemini-3.8-flash`.
+   (oder direkt im Willkommens-Dialog beim ersten Start). Modell leer lassen = `gemini-2.5-flash` (bei Überlastung automatisch Fallback).
 5. Hinweis: Im kostenlosen Tarif gelten Anfrage-Limits pro Minute/Tag, und Google darf die Eingaben zur
    Verbesserung seiner Produkte nutzen. Für Vertrauliches lieber einen bezahlten Tarif verwenden.
    Bitte die aktuellen Nutzungsbedingungen für Nutzer in der EU in AI Studio prüfen.
@@ -126,6 +126,40 @@ Browser-Aufrufe direkt an die APIs wurden geprüft (Preflight-Anfrage mit fremde
 
 ---
 
+
+## 🛠️ Werkzeuge (Handy-Steuerung)
+
+Jarvis kann – soweit eine Web-App auf Android Chrome das erlaubt – Ihr Handy steuern.
+Die KI entscheidet über **Function Calling** (`tools` / `tool_calls`, OpenAI-kompatibel: xAI, OpenAI, Gemini),
+häufige Befehle greifen aber auch **ohne API-Schlüssel** über lokale Erkennung.
+
+| Werkzeug | Beispiel | Android Chrome | Native App später |
+|---|---|---|---|
+| Anrufen | „Ruf die 0170… an“ | ✅ öffnet Telefon-App nach Ja | – |
+| SMS | „Schreib eine SMS an …: Text“ | ✅ öffnet SMS-App nach Ja | – |
+| WhatsApp | „WhatsApp an 49170…: Hallo“ | ✅ wa.me nach Ja | – |
+| E-Mail | „Schreib eine Mail an …“ | ✅ mailto: nach Ja | – |
+| Navigation | „Navigiere zum Hauptbahnhof“ | ✅ Google Maps nach Ja | – |
+| YouTube / Spotify | „Such auf YouTube nach …“ | ✅ Suche im Browser/App | – |
+| Website | „Öffne wikipedia.org“ | ✅ | – |
+| Teilen | „Teile den Text: …“ | ✅ `navigator.share` (sonst Zwischenablage) | – |
+| Vibrieren | „Vibriere kurz“ | ✅ | – |
+| Akku | „Wie voll ist der Akku?“ | ✅ Battery API | – |
+| Standort | „Wo bin ich?“ | ✅ nach Erlaubnis, dann Karte anbieten | Hintergrund-GPS |
+| Zwischenablage | „Kopiere …“ | ✅ | – |
+| Taschenlampe | „Taschenlampe an“ | ⚠️ oft **nicht** unterstützt (Camera torch) | ✅ geplant |
+| Timer / Notizen | „Stell einen Timer…“ / „Merke dir…“ | ✅ | – |
+
+Aktionen, die die App verlassen (Anruf, SMS, WhatsApp, E-Mail, Maps, …), zeigen zuerst eine **Ja/Nein-Karte** im Chat.
+
+### Neues Werkzeug hinzufügen
+
+1. In `js/core/tools/definitions.js` ein Objekt ergänzen: `name`, `description`, `parameters` (JSON-Schema),
+   `execute(args, ctx)`, optional `localTriggers` und `userHint`.
+2. Plattformzugriff nur über `ctx.device` (Methoden in `js/adapters/web-device.js`, später Android-Adapter).
+3. Unit-Test in `tests/tools.test.mjs` schreiben, `npm test` ausführen.
+4. In `sw.js` die `VERSION` hochzählen und die neue Datei ggf. in `APP_SHELL` eintragen.
+
 ## 🧩 Aufbau des Codes (für den späteren Umbau zur Android-App)
 
 ```
@@ -144,12 +178,14 @@ js/core/            ★ Kern – reine Logik OHNE Browser-Funktionen (wiederverw
   timers.js           Timer-Verwaltung
   prompt.js           System-Prompt (Deutsch, Datum/Uhrzeit, Notizen)
   ai.js               OpenAI-kompatibler API-Aufruf
-  assistant.js        Entscheidet: lokaler Skill oder KI
+  assistant.js        Entscheidet: Skill → Tool-Trigger → KI+Tools
+  tools/              Werkzeug-Registry, Trigger, KI-Schleife, Definitionen
 js/adapters/        Browser-Anbindungen (für Android später ersetzen)
   web-storage.js      localStorage
   web-tts.js          Sprachausgabe: listVoices(), speak(text, {voiceId, rate, pitch})
   web-stt.js          Spracherkennung inkl. Auto-Neustart
   web-audio.js        Signaltöne, Vibration
+  web-device.js       Handy-Aktionen (tel, Maps, Akku, Standort, …)
 js/ui/              Anzeige (view.js, settings-view.js)
 tests/              Unit-Tests für den Kern (Node.js)
 tools/              Icon-Generator, Browser-Test

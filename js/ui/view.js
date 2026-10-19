@@ -119,3 +119,48 @@ export function fillVoiceSelect(select, voices, selectedId) {
   }
   select.value = voices.some((v) => v.id === selectedId) ? selectedId : '';
 }
+
+
+/** Bestätigungskarte (Ja/Nein) im Chat. onYes/onNo werden einmal aufgerufen. */
+export function addConfirmCard({ title, detail }, { onYes, onNo }) {
+  const chat = els().chat;
+  const div = document.createElement('div');
+  div.className = 'msg assistant confirm-card';
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = assistantName;
+  const body = document.createElement('div');
+  body.className = 'confirm-body';
+  const h = document.createElement('strong');
+  h.textContent = title || 'Fortfahren?';
+  body.append(h);
+  if (detail) {
+    const d = document.createElement('div');
+    d.className = 'confirm-detail';
+    d.textContent = detail;
+    body.append(d);
+  }
+  const row = document.createElement('div');
+  row.className = 'confirm-actions';
+  const yes = document.createElement('button');
+  yes.type = 'button';
+  yes.className = 'btn primary confirm-yes';
+  yes.textContent = 'Ja';
+  const no = document.createElement('button');
+  no.type = 'button';
+  no.className = 'btn confirm-no';
+  no.textContent = 'Nein';
+  const done = (fn) => {
+    yes.disabled = no.disabled = true;
+    div.classList.add('confirm-done');
+    fn?.();
+  };
+  yes.addEventListener('click', () => done(onYes));
+  no.addEventListener('click', () => done(onNo));
+  row.append(yes, no);
+  body.append(row);
+  div.append(who, body);
+  chat.append(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}

@@ -60,6 +60,9 @@ with sync_playwright() as p:
     page.click("#ob-done")
     page.wait_for_timeout(300)
     check("Onboarding geschlossen", not page.is_visible("#onboarding"))
+    # Sprachausgabe aus (headless hängt sonst an speechSynthesis)
+    page.click("#btn-mute")
+    page.wait_for_timeout(200)
 
     # 2) Lokale Skills
     def ask(text, wait=600):
@@ -95,7 +98,7 @@ with sync_playwright() as p:
     page.select_option("#set-provider", "openai")
     check("OpenAI-Modell-Platzhalter", page.get_attribute("#set-model", "placeholder") == "gpt-6-luna")
     page.select_option("#set-provider", "gemini")
-    check("Gemini: Modell-Platzhalter + Hinweis", page.get_attribute("#set-model", "placeholder") == "gemini-3.8-flash"
+    check("Gemini: Modell-Platzhalter + Hinweis", page.get_attribute("#set-model", "placeholder") == "gemini-2.5-flash"
           and "keine Kreditkarte" in page.inner_text("#key-hint"))
     page.select_option("#set-provider", "custom")
     check("Basis-URL-Feld bei eigener URL", page.is_visible("#row-baseurl"))
@@ -136,12 +139,42 @@ with sync_playwright() as p:
     page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
     check("Gemini-Antwort angezeigt", "Gemini meldet sich" in ask("Was ist ein schwarzes Loch?", 1200))
     check("Gemini: Endpunkt, Modell, Bearer", gem.get("url") == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-          and gem["body"]["model"] == "gemini-3.8-flash" and gem["auth"] == "Bearer fake-gemini-key"
+          and gem["body"]["model"] == "gemini-2.5-flash" and gem["auth"] == "Bearer fake-gemini-key"
           and "Du bist Friday" in gem["body"]["messages"][0]["content"])
     page.click("#btn-settings"); page.wait_for_timeout(300)
     page.select_option("#set-provider", "xai")
     check("xAI-Schlüssel nach Anbieterwechsel noch da", page.input_value("#set-apikey") == "xai-test-123")
     page.click("#btn-back"); page.wait_for_timeout(200)
+
+    # 4c) Handy-Werkzeuge (lokale Trigger + Bestätigungskarte)
+    page.evaluate("""() => {
+      window.__opened = [];
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a');
+        if (!a) return;
+        const href = a.getAttribute('href') || '';
+        if (/^(tel|sms|mailto|https?):/i.test(href)) {
+          e.preventDefault(); e.stopPropagation();
+          window.__opened.push(href);
+        }
+      }, true);
+    }""")
+    reply = ask("Ruf die 01701234567 an", 900)
+    check("Anruf: Bestätigungstext", "anrufen" in reply.lower() or "Nummer" in reply)
+    check("Anruf: Ja/Nein-Karte", page.locator(".confirm-card .confirm-yes").count() >= 1)
+    page.locator(".confirm-card .confirm-yes").last.click()
+    page.wait_for_timeout(700)
+    check("Nach Ja: Karte erledigt", page.locator(".confirm-card.confirm-done").count() >= 1)
+    check("Nach Ja: tel: ausgelöst oder Bestätigung", bool(page.evaluate("window.__opened")) or "öffne" in page.locator(".msg.assistant").last.inner_text().lower())
+    clip = ask("Kopiere den Text: Hallo Jarvis Test", 900)
+    check("Zwischenablage-Tool", "Zwischenablage" in clip)
+    help_txt = ask("Was kannst du?", 900)
+    check("Hilfe listet Werkzeuge", "Anrufen" in help_txt and ("WhatsApp" in help_txt or "Navigation" in help_txt or "YouTube" in help_txt))
+    ask("Schreib eine SMS an 01709999999: Test", 900)
+    page.wait_for_timeout(400)
+    page.locator(".confirm-card:not(.confirm-done) .confirm-no").last.click()
+    page.wait_for_timeout(500)
+    check("Nach Nein: Abbruchtext", "Alles klar" in page.locator(".msg.assistant").last.inner_text() or "ab" in page.locator(".msg.assistant").last.inner_text().lower())
 
     # 5) Wake-Word-Logik im Browser (Kern-Module, simuliertes Transkript)
     wk = page.evaluate("""async () => {

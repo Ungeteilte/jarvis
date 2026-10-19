@@ -125,9 +125,15 @@ export function handleSkill(text, ctx) {
   }
 
   // --- Hilfe / Name ---
-  if (/^(hilfe|was kannst du|was kannst du alles)/.test(t)) {
-    return `Ich bin ${name}. Ohne KI kann ich Ihnen Uhrzeit und Datum sagen, Timer stellen und mir Dinge merken. ` +
-      'Mit hinterlegtem API-Schlüssel beantworte ich auch alle anderen Fragen.';
+  if (/^(hilfe|was kannst du|was kannst du alles|was vermagst du)/.test(t)) {
+    const extras = ctx.registry?.helpLines?.() || [
+      'Anrufen, SMS, WhatsApp, E-Mail, Navigation, YouTube, Spotify, Websites öffnen',
+      'Text teilen, vibrieren, Akkustand, Standort, Zwischenablage, Taschenlampe (falls erlaubt)'
+    ];
+    return `Ich bin ${name}. Ich kann Uhrzeit und Datum nennen, Timer stellen und mir Dinge merken. ` +
+      `Außerdem: ${extras.join('; ')}. ` +
+      'Aktionen wie Anrufen oder WhatsApp fragen vorher mit Ja/Nein nach. ' +
+      'Mit API-Schlüssel verstehe ich auch freiere Formulierungen.';
   }
   if (/^(wie heisst du|wer bist du|wie ist dein name)/.test(t)) {
     return `Mein Name ist ${name}. Stets zu Diensten.`;

@@ -12,6 +12,7 @@ import { createWebStorageAdapter } from './adapters/web-storage.js';
 import { createWebTTS } from './adapters/web-tts.js';
 import { createWebSTT } from './adapters/web-stt.js';
 import { beep, vibrate } from './adapters/web-audio.js';
+import { createWebDevice } from './adapters/web-device.js';
 import * as view from './ui/view.js';
 import { createSettingsView } from './ui/settings-view.js';
 
@@ -21,6 +22,7 @@ const { $ } = view;
 const store = createStore(createWebStorageAdapter());
 const tts = createWebTTS();
 const stt = createWebSTT({ lang: 'de-DE' });
+const device = createWebDevice();
 let settings = loadSettings(store);
 let persona = loadPersona(store);
 let busy = false;
@@ -35,7 +37,7 @@ const timers = createTimerManager({
     say(msg.text);
   }
 });
-const assistant = createAssistant({ store, timers });
+const assistant = createAssistant({ store, timers, device });
 
 const wake = createWakeController({
   stt,
@@ -112,6 +114,18 @@ async function handleInput(text) {
   }
   if (reply) {
     view.addMessage(reply);
+    if (reply.confirm) {
+      view.addConfirmCard(reply.confirm, {
+        onYes: async () => {
+          const r = await assistant.confirmAction(reply.confirm.action);
+          if (r) { view.addMessage(r); await say(r.text); }
+        },
+        onNo: async () => {
+          const r = assistant.cancelAction();
+          if (r) { view.addMessage(r); await say(r.text); }
+        }
+      });
+    }
     view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
     await say(reply.text);
   }

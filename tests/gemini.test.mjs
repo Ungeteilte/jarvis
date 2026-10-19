@@ -18,7 +18,7 @@ function fakeFetch(response, status = 200) {
 test('Gemini ist im Anbieter-Register mit kostenlosem Standardmodell', () => {
   const g = PROVIDERS.gemini;
   assert.equal(g.baseUrl, 'https://generativelanguage.googleapis.com/v1beta/openai');
-  assert.equal(g.defaultModel, 'gemini-3.8-flash');
+  assert.equal(g.defaultModel, 'gemini-2.5-flash');
   assert.equal(g.keyUrl, 'https://aistudio.google.com/apikey');
   assert.match(g.keyHint, /keine Kreditkarte/);
 });
@@ -30,7 +30,7 @@ test('Gemini-Schlüssel wird pro Anbieter gespeichert, letzter Anbieter gemerkt'
   const s = loadSettings(store);
   assert.equal(s.provider, 'gemini');
   assert.deepEqual(resolveProvider(s), {
-    id: 'gemini', baseUrl: PROVIDERS.gemini.baseUrl, apiKey: FAKE_KEY, model: 'gemini-3.8-flash'
+    id: 'gemini', baseUrl: PROVIDERS.gemini.baseUrl, apiKey: FAKE_KEY, model: 'gemini-2.5-flash'
   });
 });
 
@@ -42,7 +42,7 @@ test('Gemini-Client: Anfrage-Format und Antwort (Fake)', async () => {
   assert.equal(calls[0].url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.headers.Authorization, `Bearer ${FAKE_KEY}`);
-  assert.equal(calls[0].body.model, 'gemini-3.8-flash');
+  assert.equal(calls[0].body.model, 'gemini-2.5-flash');
   assert.deepEqual(calls[0].body.messages, [
     { role: 'system', content: 'Du bist Jarvis.' },
     { role: 'user', content: 'Hallo' }
