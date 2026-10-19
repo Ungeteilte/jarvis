@@ -44,7 +44,7 @@ Das Mikrofon funktioniert im Browser **nur über HTTPS** – GitHub Pages liefer
    `https://IHR-NAME.github.io/jarvis/` – diese im Handy öffnen.
 
 **Updates:** Geänderte Dateien einfach erneut hochladen. Damit das Handy die neue Version sicher lädt,
-in `sw.js` die Zeile `const VERSION = 'jarvis-v5';` hochzählen (`jarvis-v5` …).
+in `sw.js` die Zeile `const VERSION = 'jarvis-v6';` hochzählen (`jarvis-v5` …).
 
 *Alternativen:* Netlify, Cloudflare Pages oder Vercel funktionieren genauso (Ordner hochladen, fertig).
 
@@ -102,6 +102,21 @@ gewählten Anbieter gesendet. Trotzdem: Schlüssel nicht weitergeben und bei Ver
 Bei den Anbietern ein **Ausgabenlimit** setzen.
 
 ---
+
+## ⚡ Live-Antworten (Streaming)
+
+Antworten der KI erscheinen **Wort für Wort**, während sie entstehen, und werden
+**Satz für Satz** vorgelesen – Jarvis beginnt also zu sprechen, bevor die ganze
+Antwort da ist. Technisch: `stream: true` an die OpenAI-kompatiblen Endpunkte
+(xAI, OpenAI, Gemini), die Antwort kommt als Server-Sent Events und wird in
+`js/core/ai.js` (`askAIStream`) zusammengesetzt – auch Werkzeug-Aufrufe.
+
+- Klappt Streaming nicht (alter Browser, Abbruch mitten in der Antwort, Anbieter
+  liefert kein SSE), fällt Jarvis automatisch auf die normale Antwort zurück.
+- Wiederholung bei Überlastung (503/429) und Ersatzmodelle (404) gelten weiter.
+- Vorbereitet für Mehrgeräte-Sync per WebSocket: `js/core/realtime/` definiert
+  das Ereignis-Protokoll (`{v, type, id, room, from, ts, …}` mit `msg`/`delta`/`ack`)
+  und einen lokalen Transport, der nichts sendet. Ein Server ist (noch) nicht nötig.
 
 ## ⚠️ Einschränkungen
 

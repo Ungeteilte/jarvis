@@ -1,5 +1,5 @@
 // OpenAI-kompatible Tool-Schleife: sendet tools, führt tool_calls aus, sendet Ergebnisse zurück.
-import { askAIRaw } from '../ai.js';
+import { askAIRaw, askAIStream } from '../ai.js';
 import { resultToText } from './registry.js';
 
 const MAX_ROUNDS = 4;
@@ -16,7 +16,10 @@ function parseArgs(raw) {
  * confirm-Ergebnisse werden als Text an die KI gemeldet; die UI wertet
  * das letzte needsConfirm-Ergebnis aus der toolResults-Liste aus.
  */
-export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, fetchFn, maxRounds = MAX_ROUNDS, ...opts } = {}) {
+export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, fetchFn, maxRounds = MAX_ROUNDS, onDelta, stream, signal, ...opts } = {}) {
+  // onDelta({type:'text',text}|{type:'reset'}|{type:'tool',name,args}|{type:'tool-result',name,ok})
+  const emit = typeof onDelta === 'function' ? onDelta : null;
+  const useStream = Boolean(emit) && stream !== false;
   const tools = registry.toOpenAITools();
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -33,7 +36,18 @@ export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, f
   let lastText = '';
 
   for (let round = 0; round < maxRounds; round++) {
-    const raw = await askAIRaw(cfg, messages, { tools, tool_choice: 'auto', fetchFn, sleepFn: opts.sleepFn, retries: opts.retries, backoffMs: opts.backoffMs });
+    const callOpts = { tools, tool_choice: 'auto', fetchFn, sleepFn: opts.sleepFn, retries: opts.retries, backoffSchedule: opts.backoffSchedule, skipModelDiscovery: opts.skipModelDiscovery, signal };
+    let roundText = '';
+    const raw = useStream
+      ? await askAIStream(cfg, messages, {
+        ...callOpts,
+        onDelta: (d) => {
+          if (d.type === 'reset') roundText = '';
+          else if (d.type === 'text') roundText += d.text;
+          emit(d);
+        }
+      })
+      : await askAIRaw(cfg, messages, callOpts);
     const data = raw.data;
     const msg = data?.choices?.[0]?.message;
     if (!msg) throw new Error('Leere Antwort vom Anbieter erhalten.');
@@ -47,7 +61,9 @@ export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, f
     if (!calls.length) {
       lastText = String(msg.content || '').trim();
       if (raw.usedFallback && raw.model) {
-        lastText += ` (Antwort über Ersatzmodell ${raw.model}, weil das gewünschte gerade überlastet war.)`;
+        const note = ` (Antwort über Ersatzmodell ${raw.model}, weil das gewünschte gerade überlastet war.)`;
+        lastText += note;
+        emit?.({ type: 'text', text: note });
       }
       return { text: lastText, toolResults, rounds: round + 1, model: raw.model, usedFallback: raw.usedFallback };
     }
@@ -57,12 +73,16 @@ export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, f
       content: msg.content || null,
       tool_calls: calls
     });
+    // Vor-Text dieser Runde (z. B. „Ich rufe an …“) verwerfen – die nächste Runde antwortet neu
+    if (emit && roundText) emit({ type: 'reset' });
 
     for (const tc of calls) {
       const name = tc.function?.name || tc.name;
       const args = parseArgs(tc.function?.arguments ?? tc.arguments);
+      emit?.({ type: 'tool', name, args });
       const result = await registry.run(name, args, { ...ctx, registry });
       toolResults.push({ name, args, result });
+      emit?.({ type: 'tool-result', name, ok: result?.ok !== false, needsConfirm: Boolean(result?.needsConfirm) });
       messages.push({
         role: 'tool',
         tool_call_id: tc.id || `call_${toolResults.length}`,

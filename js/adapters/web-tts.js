@@ -65,7 +65,7 @@ export function createWebTTS() {
 
     async speak(text, { voiceId = '', rate = 1, pitch = 1, lang = 'de-DE' } = {}) {
       if (!synth || !text) return;
-      synth.cancel();
+      if (synth.speaking || synth.pending) synth.cancel();
       const voice = pickVoice(await waitForVoices(), voiceId);
       speaking = true;
       try {

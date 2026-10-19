@@ -381,6 +381,95 @@ export const TOOL_DEFINITIONS = [
     }
   },
 
+
+  // ---------- App öffnen (nativ besser) ----------
+  {
+    name: 'open_app',
+    description: 'Öffnet eine installierte App anhand ihres Namens (z. B. Instagram, Einstellungen).',
+    userHint: 'App öffnen („Öffne Instagram“)',
+    parameters: obj({ name: str('Anzeigename der App') }, ['name']),
+    localTriggers: [
+      { re: /^(?:oeffne|öffne|starte)\s+(?:bitte\s+)?(?:die\s+app\s+)?(.+)$/i,
+        parse: (m) => {
+          const n = stripQuotes(m[1]).replace(/[.!?]+$/, '').trim();
+          // Keine URLs/Websites hier
+          if (/\./.test(n) && !/\s/.test(n)) return null;
+          if (/^(youtube|spotify|whatsapp|maps|google maps)$/i.test(n)) return null;
+          return { name: n };
+        } }
+    ],
+    async execute({ name }, ctx) {
+      if (!ctx.device?.openApp) {
+        return { ok: false, unsupported: true, message: 'Apps öffnen geht zuverlässig erst in der Android-App. Bitte Jarvis aus dem Store/APK nutzen.' };
+      }
+      return ctx.device.openApp(String(name || '').trim());
+    }
+  },
+
+  // ---------- Lautstärke ----------
+  {
+    name: 'adjust_volume',
+    description: 'Lautstärke erhöhen, verringern oder stummschalten.',
+    userHint: 'Lautstärke („Lauter“ / „Leiser“ / „Stumm“)',
+    parameters: obj({ direction: str('up, down oder mute') }, ['direction']),
+    localTriggers: [
+      { re: /^(?:lauter|lautstaerke\s+hoch|volume\s+up)[.!?]?$/i, parse: () => ({ direction: 'up' }) },
+      { re: /^(?:leiser|lautstaerke\s+runter|volume\s+down)[.!?]?$/i, parse: () => ({ direction: 'down' }) },
+      { re: /^(?:stumm|ton\s+aus|mute)[.!?]?$/i, parse: () => ({ direction: 'mute' }) }
+    ],
+    async execute({ direction }, ctx) {
+      if (!ctx.device?.adjustVolume) {
+        return { ok: false, unsupported: true, message: 'Lautstärke steuern kann ich in der Web-App nicht – das braucht die Android-App.' };
+      }
+      const d = String(direction || '').toLowerCase();
+      const dir = /mute|stumm/.test(d) ? 'mute' : /down|leiser|runter/.test(d) ? 'down' : 'up';
+      return ctx.device.adjustVolume(dir);
+    }
+  },
+
+  // ---------- WLAN / Bluetooth Einstellungen ----------
+  {
+    name: 'open_settings_panel',
+    description: 'Öffnet WLAN- oder Bluetooth-Einstellungen. Umschalten direkt ist ab Android 10 nicht erlaubt.',
+    userHint: 'WLAN/Bluetooth-Einstellungen öffnen',
+    parameters: obj({ panel: str('wifi oder bluetooth') }, ['panel']),
+    localTriggers: [
+      { re: /(?:wlan|wifi).*(?:einstellung|oeffne|öffne|an|aus)|(?:oeffne|öffne).*wlan/i, parse: () => ({ panel: 'wifi' }) },
+      { re: /bluetooth.*(einstellung|oeffne|öffne|an|aus)|(?:oeffne|öffne).*bluetooth/i, parse: () => ({ panel: 'bluetooth' }) }
+    ],
+    async execute({ panel }, ctx) {
+      if (!ctx.device?.openSystemSettings) {
+        return {
+          ok: false,
+          unsupported: true,
+          message: 'WLAN und Bluetooth kann eine Web-App nicht umschalten. In der Android-App öffne ich die Systemeinstellungen für Sie.'
+        };
+      }
+      const p = /blue/i.test(panel) ? 'bluetooth' : 'wifi';
+      return ctx.device.openSystemSettings(p);
+    }
+  },
+
+  // ---------- System-Timer (Uhr-App) ----------
+  {
+    name: 'set_system_timer',
+    description: 'Setzt einen Timer in der Android-Uhr-App (überlebt das Schließen von Jarvis).',
+    userHint: 'System-Timer („System-Timer 10 Minuten“)',
+    parameters: obj({ duration: str('Dauer, z. B. 10 Minuten') }, ['duration']),
+    localTriggers: [
+      { re: /system[- ]?timer\s+(?:auf\s+|fuer\s+|für\s+)?(.+)$/i,
+        parse: (m) => ({ duration: m[1] }) }
+    ],
+    async execute({ duration }, ctx) {
+      if (!ctx.device?.setSystemTimer) {
+        return { ok: false, unsupported: true, message: 'System-Timer brauchen die Android-App.' };
+      }
+      const ms = parseDuration(String(duration));
+      if (!ms) return { ok: false, message: 'Welche Dauer? z. B. System-Timer 10 Minuten.' };
+      return ctx.device.setSystemTimer(Math.round(ms / 1000), formatDuration(ms));
+    }
+  },
+
   // ---------- Hilfe ----------
   {
     name: 'list_capabilities',

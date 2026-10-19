@@ -151,3 +151,12 @@ output { color: var(--text); }
 .confirm-actions .btn { flex: 1; min-height: 44px; }
 .confirm-card.confirm-done { opacity: 0.55; }
 .confirm-card.confirm-done .btn { pointer-events: none; }
+
+/* Live-Antwort (Streaming) */
+.msg.streaming span:last-child::after {
+  content: '▍';
+  margin-left: 2px;
+  color: var(--accent, #3ad6ff);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }

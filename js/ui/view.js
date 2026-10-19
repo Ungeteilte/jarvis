@@ -43,6 +43,37 @@ export function addMessage(msg) {
   return div;
 }
 
+/**
+ * Wachsende Antwort-Blase für gestreamte Antworten.
+ * append(text) hängt an, reset() leert, finish(msg) ersetzt durch Endtext.
+ */
+export function addStreamingMessage() {
+  const chat = els().chat;
+  const div = addMessage({ role: 'assistant', text: '' });
+  div.classList.add('streaming');
+  const body = div.lastElementChild;
+  let text = '';
+  const stickToBottom = () => {
+    if (chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120) chat.scrollTop = chat.scrollHeight;
+  };
+  return {
+    el: div,
+    get text() { return text; },
+    append(t) { text += t; body.textContent = text; stickToBottom(); },
+    reset() { text = ''; body.textContent = ''; },
+    finish(msg) {
+      div.classList.remove('streaming');
+      if (msg) {
+        text = msg.text;
+        body.textContent = msg.text;
+        div.classList.toggle('error', Boolean(msg.error));
+      }
+      chat.scrollTop = chat.scrollHeight;
+    },
+    remove() { div.remove(); }
+  };
+}
+
 export function renderHistory(history) {
   els().chat.replaceChildren();
   history.forEach(addMessage);
