@@ -75,10 +75,12 @@
         </label>
         <label>Modell
           <span class="row">
-            <input id="set-model" type="text" list="model-list" spellcheck="false">
+            <select id="set-model-select" aria-label="Modell wählen"></select>
             <button id="btn-loadmodels" type="button" class="btn small">Laden</button>
           </span>
-          <datalist id="model-list"></datalist>
+        </label>
+        <label id="row-custom-model" class="hidden">Eigenes Modell
+          <input id="set-model-custom" type="text" placeholder="Modellname eingeben" spellcheck="false" autocomplete="off">
         </label>
         <p id="key-hint" class="hint"></p>
         <p class="hint">🔒 Der Schlüssel wird nur auf diesem Gerät gespeichert (localStorage) und direkt an den gewählten Anbieter gesendet.</p>

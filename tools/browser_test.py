@@ -39,7 +39,13 @@ with sync_playwright() as p:
         sent["auth"] = route.request.headers.get("authorization")
         route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
                       body=json.dumps({"choices": [{"message": {"content": "Selbstverständlich, Sir. Hier ist ein Witz."}}]}))
-    page.route("https://api.x.ai/**", fake_api)
+    def fake_xai(route):
+        if route.request.method == "GET" and "/models" in route.request.url:
+            route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
+                          body=json.dumps({"data": [{"id": "grok-4.7"}, {"id": "grok-loaded-extra"}]}))
+            return
+        fake_api(route)
+    page.route("https://api.x.ai/**", fake_xai)
     gem = {}
     def fake_gemini(route):
         gem["url"] = route.request.url
@@ -96,10 +102,15 @@ with sync_playwright() as p:
     page.wait_for_timeout(200)
     page.screenshot(path=str(SHOTS / "settings-bottom.png"))
     page.select_option("#set-provider", "openai")
-    check("OpenAI-Modell-Platzhalter", page.get_attribute("#set-model", "placeholder") == "gpt-6-luna")
+    page.wait_for_timeout(100)
+    opts = page.eval_on_selector_all("#set-model-select option", "os => os.map(o => o.value)")
+    check("OpenAI-Modell-Dropdown", "gpt-6-luna" in opts and opts[-1] == "__custom__")
+    page.select_option("#set-model-select", "gpt-6-luna")
+    check("OpenAI-Modell ausgewählt", page.input_value("#set-model-select") == "gpt-6-luna")
     page.select_option("#set-provider", "gemini")
-    check("Gemini: Modell-Platzhalter + Hinweis", page.get_attribute("#set-model", "placeholder") == "gemini-2.5-flash"
-          and "keine Kreditkarte" in page.inner_text("#key-hint"))
+    gopts = page.eval_on_selector_all("#set-model-select option", "os => os.map(o => o.value)")
+    check("Gemini: Modell-Dropdown + Hinweis", "gemini-2.5-flash" in gopts and "keine Kreditkarte" in page.inner_text("#key-hint"))
+    page.select_option("#set-model-select", "gemini-2.5-flash")
     page.select_option("#set-provider", "custom")
     check("Basis-URL-Feld bei eigener URL", page.is_visible("#row-baseurl"))
     page.select_option("#set-provider", "xai")
@@ -125,6 +136,29 @@ with sync_playwright() as p:
     check("Name in Chat-Blasen", page.locator(".msg.assistant .who").first.inner_text().lower() == "friday")
     stored = page.evaluate("JSON.parse(localStorage.getItem('jarvis.persona'))")
     check("Persona gespeichert", stored["name"] == "Friday" and abs(stored["pitch"] - 1.2) < 1e-9)
+
+    # Modell per Dropdown + Eigenes Modell speichern
+    page.click("#btn-settings"); page.wait_for_timeout(300)
+    page.select_option("#set-provider", "xai")
+    page.select_option("#set-model-select", "grok-4.6")
+    page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
+    models = page.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).models")
+    check("Modell grok-4.6 gespeichert", models.get("xai") == "grok-4.6")
+    page.click("#btn-settings"); page.wait_for_timeout(300)
+    page.select_option("#set-model-select", "__custom__")
+    check("Eigenes-Modell-Feld sichtbar", page.is_visible("#row-custom-model"))
+    page.fill("#set-model-custom", "grok-custom-test")
+    page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
+    models = page.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).models")
+    check("Eigenes Modell gespeichert", models.get("xai") == "grok-custom-test")
+    page.click("#btn-settings"); page.wait_for_timeout(200)
+    page.select_option("#set-provider", "xai")
+    page.click("#btn-loadmodels"); page.wait_for_timeout(800)
+    load_opts = page.eval_on_selector_all("#set-model-select option", "os => os.map(o => o.value)")
+    check("Laden füllt Dropdown", "grok-loaded-extra" in load_opts)
+    # Zurück auf Standard für die folgenden KI-Tests
+    page.select_option("#set-model-select", "grok-4.7")
+    page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
 
     # 4) KI-Aufruf (gemockt)
     reply = ask("Erzähl mir einen Witz", 1200)

@@ -8,7 +8,7 @@ import { loadNotes } from '../core/skills.js';
 export function createSettingsView({ store, tts, onSaved, onClearChat }) {
   const f = {
     provider: $('#set-provider'), baseurl: $('#set-baseurl'), rowBase: $('#row-baseurl'),
-    apikey: $('#set-apikey'), model: $('#set-model'), modelList: $('#model-list'),
+    apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
     name: $('#set-name'), voice: $('#set-voice'), rate: $('#set-rate'), pitch: $('#set-pitch'),
     outRate: $('#out-rate'), outPitch: $('#out-pitch'), speak: $('#set-speak'), wake: $('#set-wake'),
     testResult: $('#test-result'), notes: $('#notes-view')
@@ -19,7 +19,7 @@ export function createSettingsView({ store, tts, onSaved, onClearChat }) {
 
   function stashProvider(id = shown) {
     draft.apiKeys = { ...draft.apiKeys, [id]: f.apikey.value.trim() };
-    draft.models = { ...draft.models, [id]: f.model.value.trim() };
+    draft.models = { ...draft.models, [id]: currentModel() };
     if (id === 'custom') draft.customBaseUrl = f.baseurl.value.trim();
   }
 
@@ -30,11 +30,47 @@ export function createSettingsView({ store, tts, onSaved, onClearChat }) {
     f.rowBase.classList.toggle('hidden', id !== 'custom');
     f.baseurl.value = draft.customBaseUrl || '';
     f.apikey.value = draft.apiKeys[id] || '';
-    f.model.value = draft.models[id] || '';
-    f.model.placeholder = p.defaultModel || 'Modellname';
-    f.modelList.replaceChildren(...p.models.map((m) => new Option(m, m)));
     f.testResult.textContent = '';
     renderKeyHint($('#key-hint'), p);
+    fillModelSelect(id, draft.models[id] || '');
+  }
+
+  /** Bekannte Modelle + „Eigenes Modell…“. selected = gespeicherter Wert. */
+  function fillModelSelect(providerId, selected) {
+    const p = PROVIDERS[providerId] || PROVIDERS.xai;
+    const known = [...(p.models || [])];
+    if (p.defaultModel && !known.includes(p.defaultModel)) known.unshift(p.defaultModel);
+    // Vom „Laden“-Aufruf zwischengespeicherte Extra-Modelle
+    const extra = draft._loadedModels?.[providerId] || [];
+    for (const m of extra) if (m && !known.includes(m)) known.push(m);
+
+    const isCustom = selected && !known.includes(selected);
+    f.modelSelect.replaceChildren();
+    if (!known.length && !selected) {
+      f.modelSelect.append(new Option(p.defaultModel || '(kein Vorschlag)', p.defaultModel || ''));
+    }
+    for (const m of known) f.modelSelect.append(new Option(m, m));
+    f.modelSelect.append(new Option('Eigenes Modell…', '__custom__'));
+
+    if (isCustom) {
+      f.modelSelect.value = '__custom__';
+      f.rowCustomModel.classList.remove('hidden');
+      f.modelCustom.value = selected;
+    } else {
+      f.modelSelect.value = selected || p.defaultModel || (known[0] || '');
+      if (![...f.modelSelect.options].some((o) => o.value === f.modelSelect.value)) {
+        f.modelSelect.value = known[0] || '__custom__';
+      }
+      const custom = f.modelSelect.value === '__custom__';
+      f.rowCustomModel.classList.toggle('hidden', !custom);
+      if (!custom) f.modelCustom.value = '';
+      else f.modelCustom.value = selected || '';
+    }
+  }
+
+  function currentModel() {
+    if (f.modelSelect.value === '__custom__') return f.modelCustom.value.trim();
+    return (f.modelSelect.value || '').trim();
   }
 
   async function refreshVoices() {
@@ -82,14 +118,22 @@ export function createSettingsView({ store, tts, onSaved, onClearChat }) {
     tts.speak(previewSentence(p.name), p);
   });
 
+  f.modelSelect.addEventListener('change', () => {
+    const custom = f.modelSelect.value === '__custom__';
+    f.rowCustomModel.classList.toggle('hidden', !custom);
+    if (custom) f.modelCustom.focus();
+  });
+
   $('#btn-loadmodels').addEventListener('click', async () => {
     f.testResult.className = 'hint';
     f.testResult.textContent = 'Lade Modelle …';
     try {
       const models = await listModels(draftConfig());
-      f.modelList.replaceChildren(...models.map((m) => new Option(m, m)));
+      draft._loadedModels = { ...(draft._loadedModels || {}), [shown]: models };
+      const keep = currentModel();
+      fillModelSelect(shown, keep);
       f.testResult.className = 'hint ok';
-      f.testResult.textContent = `${models.length} Modelle gefunden – tippen Sie ins Modell-Feld für Vorschläge.`;
+      f.testResult.textContent = `${models.length} Modelle geladen – bitte in der Liste wählen.`;
     } catch (e) {
       f.testResult.className = 'hint err';
       f.testResult.textContent = e.message;
