@@ -1,0 +1,16 @@
+# Abhängigkeiten / Build
+node_modules/
+.netlify/
+__pycache__/
+*.pyc
+# Logs & Systemdateien
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+# Lokale Geheimnisse (niemals einchecken)
+.env
+.env.*
+*.key
+# Archive
+*.zip
