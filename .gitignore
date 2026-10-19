@@ -24,3 +24,12 @@ android/android/app/build/
 android/android/local.properties
 android/**/*.apk
 android/**/*.aab
+# Signaturschlüssel (liegen außerhalb des Repos – niemals einchecken)
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pk8
+*lineage*.bin
+android/dist/
+*.bak-release

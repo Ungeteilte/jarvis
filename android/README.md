@@ -26,3 +26,44 @@ cd android && ./gradlew assembleDebug
 | Anruf/SMS/WhatsApp | Intents + Ja/Nein | tel:/sms:/wa.me + Ja/Nein |
 
 Siehe `INSTALL-DE.md` für die Installation auf dem Galaxy A55.
+
+
+## 🔄 Selbst-Update (ab v0.3)
+
+Die App sucht im Hintergrund (WorkManager, auch bei geschlossener App) nach neuen
+Releases unter `github.com/Ungeteilte/jarvis` mit Tag `vX.Y-android`.
+
+**Ablauf:** Prüfen (GitHub-API mit ETag) → neueres Release mit `update.json` gefunden →
+APK im Hintergrund laden (optional nur im WLAN) → SHA-256, Paketname, versionCode und
+Signatur prüfen → Benachrichtigung **„Jarvis-Update vX bereit – tippen zum Installieren“** →
+Android-Dialog **„Installieren“** (Bestätigung ist immer nötig). Beim ersten Mal fragt
+Android nach **„Unbekannte Apps installieren“** für Jarvis.
+
+**Einstellungen → App-Updates**
+- *Automatisch nach Updates suchen* (Standard an) – plant/stoppt den Job `jarvis-update-check`
+- *Wie oft prüfen*: alle 3 / 6 (Standard) / 12 / 24 Stunden
+- *Nur über WLAN herunterladen* (Standard aus)
+- *Jetzt prüfen* + Statuszeile „Zuletzt geprüft: … – aktuell (v0.x)“
+- Karte „Update verfügbar“ mit Änderungen und *Jetzt installieren*
+
+**Code:** `android/app/src/main/java/com/jarvis/assistant/updater/` (Java), Oberfläche
+`native-web/updater-ui.js` (+ `updater-format.js`). `js/core/**` bleibt unberührt.
+Tests: `./gradlew testDebugUnitTest` (JUnit) und `tests/updater-format.test.mjs`,
+`tools/updater_ui_test.py` (Headless-UI mit Fake-Plugin).
+
+### Veröffentlichen
+```bash
+export JARVIS_SIGNING_DIR=/pfad/zu/jarvis-signing   # außerhalb des Repos!
+export ANDROID_DIR=/pfad/zum/capacitor-projekt JAVA_HOME=… ANDROID_HOME=…
+tools/release-android.sh 0.4 "Was ist neu …"          # --dry-run zum Testen
+```
+Das Skript erhöht versionCode (+1) und versionName, baut, signiert mit Rotation, prüft,
+schreibt `update.json` und erstellt das Release mit `Jarvis.apk` + `update.json`.
+
+### ⚠️ Signaturschlüssel
+Ab v0.3 signiert Jarvis mit einem eigenen Release-Schlüssel (RSA 4096). Damit v0.3 über
+die mit dem Debug-Schlüssel signierte v0.2 installiert werden kann, nutzt das APK eine
+**Schlüsselrotation (APK Signature Scheme v3, Lineage alt → neu)**. Für **jedes** künftige
+Update werden der Release-Schlüssel, der alte Debug-Schlüssel und die Lineage-Datei gebraucht.
+Gehen sie verloren, lässt sich Jarvis nur noch durch Deinstallieren (Datenverlust) aktualisieren.
+Die Schlüssel liegen nie im Repo.

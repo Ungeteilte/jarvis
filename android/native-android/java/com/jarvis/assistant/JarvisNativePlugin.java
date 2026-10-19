@@ -26,7 +26,17 @@ import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 
 import androidx.security.crypto.EncryptedSharedPreferences;
-import androidx.security.crypto.MasterKey;
+import androidx.security.crypto.MasterKeys;
+
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import com.jarvis.assistant.updater.UpdateEngine;
+import com.jarvis.assistant.updater.UpdateEvents;
+import com.jarvis.assistant.updater.UpdateInstaller;
+import com.jarvis.assistant.updater.UpdateNotifier;
+import com.jarvis.assistant.updater.UpdateScheduler;
+import com.jarvis.assistant.updater.UpdateState;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -50,24 +60,28 @@ public class JarvisNativePlugin extends Plugin {
     private final AtomicBoolean ttsReady = new AtomicBoolean(false);
     private String torchCameraId = null;
     private SharedPreferences securePrefs;
+    private UpdateEvents.Listener updateListener;
 
     @Override
     public void load() {
         Context ctx = getContext();
         try {
-            MasterKey key = new MasterKey.Builder(ctx)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build();
+            String masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC);
             securePrefs = EncryptedSharedPreferences.create(
-                ctx,
                 "jarvis_secure",
-                key,
+                masterKey,
+                ctx,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             );
         } catch (Exception e) {
             securePrefs = ctx.getSharedPreferences("jarvis_secure_fallback", Context.MODE_PRIVATE);
         }
+
+        updateListener = st -> {
+            try { notifyListeners("updateStatus", JSObject.fromJSONObject(st)); } catch (Exception ignored) {}
+        };
+        UpdateEvents.add(updateListener);
 
         tts = new TextToSpeech(ctx, status -> {
             ttsReady.set(status == TextToSpeech.SUCCESS);
@@ -79,6 +93,7 @@ public class JarvisNativePlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        if (updateListener != null) UpdateEvents.remove(updateListener);
         if (tts != null) {
             tts.stop();
             tts.shutdown();
@@ -396,5 +411,73 @@ public class JarvisNativePlugin extends Plugin {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         getContext().startActivity(i);
         call.resolve();
+    }
+
+    // ---------- Selbst-Update ----------
+    private JSObject updateStatusObject() {
+        JSObject o;
+        try { o = JSObject.fromJSONObject(UpdateState.toJson(getContext())); } catch (Exception e) { o = new JSObject(); }
+        o.put("notificationsAllowed", UpdateNotifier.canNotify(getContext()));
+        return o;
+    }
+
+    @PluginMethod
+    public void getUpdateStatus(PluginCall call) {
+        call.resolve(updateStatusObject());
+    }
+
+    @PluginMethod
+    public void setUpdateConfig(PluginCall call) {
+        Context c = getContext();
+        boolean enabled = call.getBoolean("enabled", UpdateState.enabled(c));
+        int interval = call.getInt("intervalHours", UpdateState.intervalHours(c));
+        boolean wifiOnly = call.getBoolean("wifiOnly", UpdateState.wifiOnly(c));
+        UpdateState.setConfig(c, enabled, interval, wifiOnly);
+        try { UpdateScheduler.applyConfig(c); } catch (Exception e) { call.reject("Planung fehlgeschlagen: " + e.getMessage()); return; }
+        if (enabled) askNotificationPermission();
+        call.resolve(updateStatusObject());
+    }
+
+    @PluginMethod
+    public void checkNow(PluginCall call) {
+        boolean allowMetered = call.getBoolean("allowMetered", false);
+        UpdateState.setStatus(getContext(), UpdateState.CHECKING, "Suche nach Updates …");
+        UpdateScheduler.checkNow(getContext(), allowMetered);
+        call.resolve(updateStatusObject());
+    }
+
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        if (UpdateInstaller.readyApk(getContext()) == null) {
+            // Noch nicht geladen (z. B. wartet auf WLAN) → auf ausdrücklichen Wunsch jetzt laden
+            UpdateScheduler.checkNow(getContext(), true);
+            JSObject r = updateStatusObject();
+            r.put("result", "downloading");
+            call.resolve(r);
+            return;
+        }
+        if (getActivity() == null) { call.reject("Keine sichtbare App"); return; }
+        getActivity().runOnUiThread(() -> {
+            String res = UpdateInstaller.install(getActivity());
+            if (UpdateInstaller.RESULT_NEEDS_PERMISSION.equals(res) && getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).installAfterPermission();
+            }
+            JSObject r = updateStatusObject();
+            r.put("result", res);
+            call.resolve(r);
+        });
+    }
+
+    @PluginMethod
+    public void requestNotificationPermission(PluginCall call) {
+        askNotificationPermission();
+        call.resolve(updateStatusObject());
+    }
+
+    private void askNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33 || getActivity() == null) return;
+        if (ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED) return;
+        ActivityCompat.requestPermissions(getActivity(), new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 4712);
     }
 }

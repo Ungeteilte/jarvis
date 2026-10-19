@@ -25,6 +25,14 @@ if (isNative) {
   } catch { /* optional */ }
 
   document.documentElement.classList.add('jarvis-native');
+
+  // Selbst-Update: Einstellungsbereich + Hinweiskarte (Fehler hier dürfen den Start nie stören)
+  try {
+    const { mountUpdaterUI } = await import('./updater-ui.js');
+    const mount = () => mountUpdaterUI(Cap.Plugins?.JarvisNative);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount, { once: true });
+    else mount();
+  } catch (e) { console.warn('[Jarvis] Updater-UI nicht verfügbar', e); }
   console.info('[Jarvis] Native Adapter bereit');
 }
 window.__JARVIS_BOOTSTRAP_DONE__ = true;
