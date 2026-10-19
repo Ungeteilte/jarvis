@@ -44,7 +44,7 @@ Das Mikrofon funktioniert im Browser **nur über HTTPS** – GitHub Pages liefer
    `https://IHR-NAME.github.io/jarvis/` – diese im Handy öffnen.
 
 **Updates:** Geänderte Dateien einfach erneut hochladen. Damit das Handy die neue Version sicher lädt,
-in `sw.js` die Zeile `const VERSION = 'jarvis-v4';` hochzählen (`jarvis-v4` …).
+in `sw.js` die Zeile `const VERSION = 'jarvis-v5';` hochzählen (`jarvis-v5` …).
 
 *Alternativen:* Netlify, Cloudflare Pages oder Vercel funktionieren genauso (Ordner hochladen, fertig).
 
@@ -75,7 +75,7 @@ xAI und OpenAI berechnen pro Nutzung (meist wenige Cent pro Tag) und brauchen Gu
 2. **„API-Schlüssel erstellen“** (Create API key) antippen – **keine Kreditkarte nötig**.
 3. Schlüssel kopieren (beginnt meist mit `AIza…`).
 4. In Jarvis: ⚙️ → Anbieter **Google Gemini** → Schlüssel einfügen → **Speichern**
-   (oder direkt im Willkommens-Dialog beim ersten Start). Modell leer lassen = `gemini-2.5-flash` (bei Überlastung automatisch Fallback).
+   (oder direkt im Willkommens-Dialog beim ersten Start). Modell leer lassen = `gemini-3.8-flash` (bei Überlastung/404 automatisch Retry + Fallback auf verfügbare 3.x-Flash-Modelle).
 5. Hinweis: Im kostenlosen Tarif gelten Anfrage-Limits pro Minute/Tag, und Google darf die Eingaben zur
    Verbesserung seiner Produkte nutzen. Für Vertrauliches lieber einen bezahlten Tarif verwenden.
    Bitte die aktuellen Nutzungsbedingungen für Nutzer in der EU in AI Studio prüfen.

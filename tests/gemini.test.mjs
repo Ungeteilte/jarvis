@@ -18,7 +18,7 @@ function fakeFetch(response, status = 200) {
 test('Gemini ist im Anbieter-Register mit kostenlosem Standardmodell', () => {
   const g = PROVIDERS.gemini;
   assert.equal(g.baseUrl, 'https://generativelanguage.googleapis.com/v1beta/openai');
-  assert.equal(g.defaultModel, 'gemini-2.5-flash');
+  assert.equal(g.defaultModel, 'gemini-3.8-flash');
   assert.equal(g.keyUrl, 'https://aistudio.google.com/apikey');
   assert.match(g.keyHint, /keine Kreditkarte/);
 });
@@ -30,19 +30,19 @@ test('Gemini-Schlüssel wird pro Anbieter gespeichert, letzter Anbieter gemerkt'
   const s = loadSettings(store);
   assert.equal(s.provider, 'gemini');
   assert.deepEqual(resolveProvider(s), {
-    id: 'gemini', baseUrl: PROVIDERS.gemini.baseUrl, apiKey: FAKE_KEY, model: 'gemini-2.5-flash'
+    id: 'gemini', baseUrl: PROVIDERS.gemini.baseUrl, apiKey: FAKE_KEY, model: 'gemini-3.8-flash'
   });
 });
 
 test('Gemini-Client: Anfrage-Format und Antwort (Fake)', async () => {
   const { fn, calls } = fakeFetch({ choices: [{ message: { role: 'assistant', content: ' Guten Tag! ' } }] });
   const cfg = resolveProvider({ provider: 'gemini', apiKeys: { gemini: FAKE_KEY }, models: {} });
-  const text = await askAI(cfg, 'Du bist Jarvis.', [{ role: 'user', text: 'Hallo' }], { fetchFn: fn });
+  const text = await askAI(cfg, 'Du bist Jarvis.', [{ role: 'user', text: 'Hallo' }], { fetchFn: fn, skipModelDiscovery: true });
   assert.equal(text, 'Guten Tag!');
   assert.equal(calls[0].url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.headers.Authorization, `Bearer ${FAKE_KEY}`);
-  assert.equal(calls[0].body.model, 'gemini-2.5-flash');
+  assert.equal(calls[0].body.model, 'gemini-3.8-flash');
   assert.deepEqual(calls[0].body.messages, [
     { role: 'system', content: 'Du bist Jarvis.' },
     { role: 'user', content: 'Hallo' }
@@ -52,14 +52,14 @@ test('Gemini-Client: Anfrage-Format und Antwort (Fake)', async () => {
 test('Gemini-Client: Fehler als Liste wird verständlich gemeldet', async () => {
   const { fn } = fakeFetch([{ error: { code: 400, message: 'API key not valid. Please pass a valid API key.' } }], 400);
   const cfg = resolveProvider({ provider: 'gemini', apiKeys: { gemini: FAKE_KEY }, models: {} });
-  await assert.rejects(askAI(cfg, 's', [{ role: 'user', text: 'x' }], { fetchFn: fn }), (e) =>
+  await assert.rejects(askAI(cfg, 's', [{ role: 'user', text: 'x' }], { fetchFn: fn, skipModelDiscovery: true }), (e) =>
     e instanceof AIError && /Fehler 400/.test(e.message) && /API key not valid/.test(e.message));
 });
 
 test('Gemini-Client: Modelle laden entfernt "models/"-Präfix', async () => {
-  const { fn, calls } = fakeFetch({ object: 'list', data: [{ id: 'models/gemini-2.5-flash' }, { id: 'models/gemini-3.8-flash' }, { id: 'gemini-2.5-flash' }] });
+  const { fn, calls } = fakeFetch({ object: 'list', data: [{ id: 'models/gemini-3.8-flash' }, { id: 'models/gemini-3.6-flash' }, { id: 'gemini-3.8-flash' }] });
   const cfg = resolveProvider({ provider: 'gemini', apiKeys: { gemini: FAKE_KEY }, models: {} });
-  assert.deepEqual(await listModels(cfg, { fetchFn: fn }), ['gemini-2.5-flash', 'gemini-3.8-flash']);
+  assert.deepEqual(await listModels(cfg, { fetchFn: fn }), ['gemini-3.6-flash', 'gemini-3.8-flash']);
   assert.equal(calls[0].url, 'https://generativelanguage.googleapis.com/v1beta/openai/models');
 });
 

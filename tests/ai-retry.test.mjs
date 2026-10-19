@@ -1,30 +1,49 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  askAI, askAIRaw, friendlyHttpError, fallbackModelsFor, isOverloadError,
-  MODEL_FALLBACKS, AIError
+  askAI, askAIRaw, friendlyHttpError, fallbackModelsFor, isOverloadError, isGoneModelError,
+  preferGeminiFallbacks, backoffForAttempt, MODEL_FALLBACKS, AIError
 } from '../js/core/ai.js';
 import { PROVIDERS, resolveProvider } from '../js/core/settings.js';
 
-test('Gemini-Standard ist gemini-2.5-flash mit Fallbacks', () => {
-  assert.equal(PROVIDERS.gemini.defaultModel, 'gemini-2.5-flash');
-  assert.deepEqual(
-    fallbackModelsFor('gemini', 'gemini-2.5-flash'),
-    ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3.8-flash']
-  );
+test('Gemini-Standard ist gemini-3.8-flash; keine 2.5 in Defaults/Fallbacks', () => {
+  assert.equal(PROVIDERS.gemini.defaultModel, 'gemini-3.8-flash');
+  assert.deepEqual(PROVIDERS.gemini.models[0], 'gemini-3.8-flash');
+  assert.ok(!PROVIDERS.gemini.models.some((m) => m.includes('2.5')));
+  assert.ok(!MODEL_FALLBACKS.gemini.some((m) => m.includes('2.5')));
   assert.deepEqual(
     fallbackModelsFor('gemini', 'gemini-3.8-flash'),
-    ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']
+    ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
   );
 });
 
-test('Freundliche deutsche Fehlertexte', () => {
+test('preferGeminiFallbacks: 3.x Flash vor Lite vor Rest', () => {
+  const sorted = preferGeminiFallbacks([
+    'models/gemini-2.5-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.6-flash',
+    'other-model'
+  ], 'gemini-3.8-flash');
+  assert.equal(sorted[0], 'gemini-3.8-flash');
+  assert.ok(sorted.indexOf('gemini-3.6-flash') < sorted.indexOf('gemini-3.5-flash-lite'));
+  assert.ok(sorted.indexOf('gemini-3.5-flash-lite') < sorted.indexOf('gemini-2.5-flash'));
+});
+
+test('Backoff-Plan 1s dann 3s', () => {
+  assert.equal(backoffForAttempt(0), 1000);
+  assert.equal(backoffForAttempt(1), 3000);
+  assert.equal(backoffForAttempt(2), 3000);
+});
+
+test('Freundliche deutsche Fehlertexte inkl. 404 gone', () => {
   assert.match(friendlyHttpError(503, 'high demand'), /überlastet/);
   assert.match(friendlyHttpError(429, 'rate limit'), /Kontingent|warten/);
   assert.match(friendlyHttpError(401, 'invalid'), /API-Schlüssel/);
+  assert.match(friendlyHttpError(404, 'models/gemini-2.5-flash is no longer available to new users'), /nicht mehr verfügbar/);
   assert.equal(isOverloadError(503, 'x'), true);
-  assert.equal(isOverloadError(400, 'bad request'), false);
-  assert.equal(isOverloadError(200, 'high demand'), true);
+  assert.equal(isGoneModelError(404, 'no longer available'), true);
+  assert.equal(isGoneModelError(404, 'missing page'), false);
 });
 
 function seqFetch(responses) {
@@ -32,17 +51,12 @@ function seqFetch(responses) {
   let i = 0;
   const fn = async (url, init) => {
     const body = init.body ? JSON.parse(init.body) : null;
-    calls.push({ url, body, auth: init.headers.Authorization });
+    calls.push({ url, method: init.method || 'GET', body });
     const r = responses[Math.min(i, responses.length - 1)];
     i++;
-    if (typeof r === 'function') return r(body);
+    if (typeof r === 'function') return r(url, body);
     const { status = 200, json } = r;
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      statusText: 'x',
-      json: async () => json
-    };
+    return { ok: status >= 200 && status < 300, status, statusText: 'x', json: async () => json };
   };
   return { fn, calls, get n() { return i; } };
 }
@@ -52,82 +66,95 @@ const cfg = {
   providerId: 'gemini',
   baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
   apiKey: 'fake-key',
-  model: 'gemini-2.5-flash'
+  model: 'gemini-3.8-flash'
 };
 
-test('503: einmal Retry, dann Erfolg auf demselben Modell', async () => {
+const ok = (text) => ({ status: 200, json: { choices: [{ message: { content: text } }] } });
+const err = (status, message) => ({ status, json: { error: { message } } });
+const modelsList = (ids) => ({ status: 200, json: { data: ids.map((id) => ({ id })) } });
+
+test('503: zwei Retries (1s, 3s), dann Erfolg auf demselben Modell', async () => {
   const sleeps = [];
   const { fn, calls } = seqFetch([
-    { status: 503, json: { error: { message: 'This model is currently experiencing high demand' } } },
-    { status: 200, json: { choices: [{ message: { content: 'Hallo!' } }] } }
+    modelsList(['gemini-3.8-flash', 'gemini-3.6-flash']), // discovery
+    err(503, 'This model is currently experiencing high demand'),
+    err(503, 'high demand'),
+    ok('Hallo!')
   ]);
   const text = await askAI(cfg, 's', [{ role: 'user', text: 'hi' }], {
-    fetchFn: fn, sleepFn: async (ms) => { sleeps.push(ms); }, backoffMs: 10
+    fetchFn: fn,
+    sleepFn: async (ms) => { sleeps.push(ms); },
+    backoffSchedule: [1000, 3000]
   });
   assert.equal(text, 'Hallo!');
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].body.model, 'gemini-2.5-flash');
-  assert.equal(calls[1].body.model, 'gemini-2.5-flash');
-  assert.deepEqual(sleeps, [10]);
+  assert.deepEqual(sleeps, [1000, 3000]);
+  assert.ok(calls.filter((c) => c.body?.model === 'gemini-3.8-flash').length >= 3);
 });
 
-test('503 dauerhaft: Fallback auf gemini-2.5-flash-lite + Hinweis', async () => {
+test('503 nach Retries: Fallback auf dynamisches 3.6-flash + Hinweis', async () => {
   const { fn, calls } = seqFetch([
-    // primary: retry once
-    { status: 503, json: { error: { message: 'high demand' } } },
-    { status: 503, json: { error: { message: 'high demand' } } },
-    // next fallback lite: success on first try
-    { status: 200, json: { choices: [{ message: { content: 'Ersatz OK' } }] } }
+    modelsList(['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite']),
+    err(503, 'high demand'),
+    err(503, 'high demand'),
+    err(503, 'high demand'),
+    ok('Ersatz OK')
   ]);
-  // primary is 3.8 so first fallback is 2.5-flash then lite
-  const text = await askAI({ ...cfg, model: 'gemini-3.8-flash' }, 's', [{ role: 'user', text: 'hi' }], {
-    fetchFn: fn, sleepFn: async () => {}, backoffMs: 1
+  const text = await askAI(cfg, 's', [{ role: 'user', text: 'hi' }], {
+    fetchFn: fn, sleepFn: async () => {}, backoffSchedule: [1, 1]
   });
   assert.match(text, /^Ersatz OK/);
-  assert.match(text, /Ersatzmodell gemini-2\.5-flash/);
-  assert.deepEqual(calls.map((c) => c.body.model), [
-    'gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-2.5-flash'
+  assert.match(text, /Ersatzmodell gemini-3\.6-flash/);
+  const chatModels = calls.filter((c) => c.body?.model).map((c) => c.body.model);
+  assert.deepEqual(chatModels.slice(0, 4), [
+    'gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.8-flash', 'gemini-3.6-flash'
   ]);
 });
 
-test('Alle Modelle überlastet → freundliche 503-Meldung', async () => {
-  const { fn } = seqFetch([
-    { status: 503, json: { error: { message: 'high demand' } } }
+test('404 no longer available: /models neu laden und verfügbares Modell nehmen', async () => {
+  const { fn, calls } = seqFetch([
+    err(404, 'models/gemini-3.8-flash is no longer available to new users. Please use models/gemini-3.6-flash'),
+    modelsList(['models/gemini-3.6-flash', 'models/gemini-3.5-flash-lite']), // Refresh nach 404
+    ok('Neues Modell')
   ]);
-  await assert.rejects(
-    askAI(cfg, 's', [{ role: 'user', text: 'x' }], { fetchFn: fn, sleepFn: async () => {}, backoffMs: 1, retries: 0 }),
-    (e) => e instanceof AIError && e.status === 503 && /überlastet/.test(e.message)
-  );
+  const text = await askAI(cfg, 's', [{ role: 'user', text: 'hi' }], {
+    fetchFn: fn, sleepFn: async () => {}, backoffSchedule: [1, 1],
+    skipModelDiscovery: true,
+    dynamicFallbacks: []
+  });
+  assert.match(text, /Neues Modell/);
+  assert.match(text, /Ersatzmodell gemini-3\.6-flash/);
+  assert.ok(calls.some((c) => c.url.endsWith('/models') && !c.body));
+  assert.equal(calls.filter((c) => c.body?.model).at(-1).body.model, 'gemini-3.6-flash');
 });
 
 test('401 wird nicht mit Fallback wiederholt', async () => {
   const { fn, calls } = seqFetch([
-    { status: 401, json: { error: { message: 'API key not valid' } } }
+    err(401, 'API key not valid')
   ]);
   await assert.rejects(
-    askAI(cfg, 's', [{ role: 'user', text: 'x' }], { fetchFn: fn, sleepFn: async () => {} }),
-    (e) => /API-Schlüssel/.test(e.message) && calls.length === 1
+    askAI(cfg, 's', [{ role: 'user', text: 'x' }], { fetchFn: fn, sleepFn: async () => {}, skipModelDiscovery: true }),
+    (e) => /API-Schlüssel/.test(e.message) && calls.filter((c) => c.body).length === 1
   );
 });
 
-test('429: Retry dann Fallback', async () => {
-  const { fn, calls } = seqFetch([
-    { status: 429, json: { error: { message: 'Resource exhausted' } } },
-    { status: 429, json: { error: { message: 'Resource exhausted' } } },
-    { status: 200, json: { choices: [{ message: { content: 'später' } }] } }
+test('429: Retries dann Fallback', async () => {
+  const { fn } = seqFetch([
+    modelsList(['gemini-3.8-flash', 'gemini-3.6-flash']),
+    err(429, 'Resource exhausted'),
+    err(429, 'Resource exhausted'),
+    err(429, 'Resource exhausted'),
+    ok('später')
   ]);
   const { data, usedFallback, model } = await askAIRaw(cfg, [{ role: 'user', content: 'x' }], {
-    fetchFn: fn, sleepFn: async () => {}, backoffMs: 1
+    fetchFn: fn, sleepFn: async () => {}, backoffSchedule: [1, 1]
   });
   assert.equal(data.choices[0].message.content, 'später');
   assert.equal(usedFallback, true);
-  assert.equal(model, 'gemini-2.5-flash-lite');
-  assert.equal(calls.length, 3);
+  assert.equal(model, 'gemini-3.6-flash');
 });
 
-test('resolveProvider liefert id für Fallback-Kette', () => {
+test('resolveProvider liefert gemini-3.8-flash', () => {
   const p = resolveProvider({ provider: 'gemini', apiKeys: { gemini: 'k' }, models: {} });
   assert.equal(p.id, 'gemini');
-  assert.equal(p.model, 'gemini-2.5-flash');
-  assert.ok(MODEL_FALLBACKS.gemini.includes('gemini-2.5-flash-lite'));
+  assert.equal(p.model, 'gemini-3.8-flash');
 });

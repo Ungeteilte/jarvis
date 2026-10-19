@@ -48,6 +48,10 @@ with sync_playwright() as p:
     page.route("https://api.x.ai/**", fake_xai)
     gem = {}
     def fake_gemini(route):
+        if route.request.method == "GET" and "/models" in route.request.url:
+            route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
+                          body=json.dumps({"data": [{"id": "gemini-3.8-flash"}, {"id": "gemini-3.6-flash"}]}))
+            return
         gem["url"] = route.request.url
         gem["body"] = json.loads(route.request.post_data or "{}")
         gem["auth"] = route.request.headers.get("authorization")
@@ -109,8 +113,8 @@ with sync_playwright() as p:
     check("OpenAI-Modell ausgewählt", page.input_value("#set-model-select") == "gpt-6-luna")
     page.select_option("#set-provider", "gemini")
     gopts = page.eval_on_selector_all("#set-model-select option", "os => os.map(o => o.value)")
-    check("Gemini: Modell-Dropdown + Hinweis", "gemini-2.5-flash" in gopts and "keine Kreditkarte" in page.inner_text("#key-hint"))
-    page.select_option("#set-model-select", "gemini-2.5-flash")
+    check("Gemini: Modell-Dropdown + Hinweis", "gemini-3.8-flash" in gopts and "keine Kreditkarte" in page.inner_text("#key-hint"))
+    page.select_option("#set-model-select", "gemini-3.8-flash")
     page.select_option("#set-provider", "custom")
     check("Basis-URL-Feld bei eigener URL", page.is_visible("#row-baseurl"))
     page.select_option("#set-provider", "xai")
@@ -173,7 +177,7 @@ with sync_playwright() as p:
     page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
     check("Gemini-Antwort angezeigt", "Gemini meldet sich" in ask("Was ist ein schwarzes Loch?", 1200))
     check("Gemini: Endpunkt, Modell, Bearer", gem.get("url") == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-          and gem["body"]["model"] == "gemini-2.5-flash" and gem["auth"] == "Bearer fake-gemini-key"
+          and gem["body"]["model"] == "gemini-3.8-flash" and gem["auth"] == "Bearer fake-gemini-key"
           and "Du bist Friday" in gem["body"]["messages"][0]["content"])
     page.click("#btn-settings"); page.wait_for_timeout(300)
     page.select_option("#set-provider", "xai")
