@@ -13,16 +13,19 @@ import { createWebTTS } from './adapters/web-tts.js';
 import { createWebSTT } from './adapters/web-stt.js';
 import { beep, vibrate } from './adapters/web-audio.js';
 import { createWebDevice } from './adapters/web-device.js';
+
+// Native Capacitor-App setzt window.__JARVIS_ADAPTERS__ im Bootstrap.
+const _A = globalThis.__JARVIS_ADAPTERS__;
 import * as view from './ui/view.js';
 import { createSettingsView } from './ui/settings-view.js';
 
 const { $ } = view;
 
 // ---------- Dienste ----------
-const store = createStore(createWebStorageAdapter());
-const tts = createWebTTS();
-const stt = createWebSTT({ lang: 'de-DE' });
-const device = createWebDevice();
+const store = createStore(_A?.storage ? _A.storage() : createWebStorageAdapter());
+const tts = _A?.tts ? _A.tts() : createWebTTS();
+const stt = _A?.stt ? _A.stt({ lang: 'de-DE' }) : createWebSTT({ lang: 'de-DE' });
+const device = _A?.device ? _A.device() : createWebDevice();
 let settings = loadSettings(store);
 let persona = loadPersona(store);
 let busy = false;
@@ -271,7 +274,7 @@ function init() {
 
   onboarding();
 
-  if ('serviceWorker' in navigator && window.isSecureContext) {
+  if (!globalThis.__JARVIS_NATIVE__ && 'serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('Service Worker:', e));
   }
 }

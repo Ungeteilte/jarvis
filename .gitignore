@@ -14,3 +14,13 @@ Thumbs.db
 *.key
 # Archive
 *.zip
+
+# Android / Capacitor
+android/node_modules/
+android/www/
+android/android/.gradle/
+android/android/build/
+android/android/app/build/
+android/android/local.properties
+android/**/*.apk
+android/**/*.aab

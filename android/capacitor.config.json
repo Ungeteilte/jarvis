@@ -1,0 +1,21 @@
+{
+  "appId": "com.jarvis.assistant",
+  "appName": "Jarvis",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#050c16"
+  },
+  "plugins": {
+    "SpeechRecognition": {
+      "language": "de-DE"
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_jarvis",
+      "iconColor": "#00c8ff"
+    }
+  }
+}

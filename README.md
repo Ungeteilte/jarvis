@@ -44,7 +44,7 @@ Das Mikrofon funktioniert im Browser **nur über HTTPS** – GitHub Pages liefer
    `https://IHR-NAME.github.io/jarvis/` – diese im Handy öffnen.
 
 **Updates:** Geänderte Dateien einfach erneut hochladen. Damit das Handy die neue Version sicher lädt,
-in `sw.js` die Zeile `const VERSION = 'jarvis-v5';` hochzählen (`jarvis-v5` …).
+in `sw.js` die Zeile `const VERSION = 'jarvis-v6';` hochzählen (`jarvis-v5` …).
 
 *Alternativen:* Netlify, Cloudflare Pages oder Vercel funktionieren genauso (Ordner hochladen, fertig).
 
