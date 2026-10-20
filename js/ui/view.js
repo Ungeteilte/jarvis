@@ -195,3 +195,48 @@ export function addConfirmCard({ title, detail }, { onYes, onNo }) {
   chat.scrollTop = chat.scrollHeight;
   return div;
 }
+
+/**
+ * Karte mit einem Start-Knopf (z. B. „Guten Morgen – Tippen zum Starten“).
+ * Der Tipp ist zugleich die Nutzer-Geste, die der Browser fürs Vorlesen verlangt.
+ */
+export function addStartCard({ title, detail, button = '▶ Starten', id = '' }, onStart) {
+  const chat = els().chat;
+  if (id && document.getElementById(id)) document.getElementById(id).remove();
+  const div = document.createElement('div');
+  div.className = 'msg assistant confirm-card start-card';
+  if (id) div.id = id;
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = assistantName;
+  const body = document.createElement('div');
+  body.className = 'confirm-body';
+  const h = document.createElement('strong');
+  h.textContent = title;
+  body.append(h);
+  if (detail) {
+    const d = document.createElement('div');
+    d.className = 'confirm-detail';
+    d.textContent = detail;
+    body.append(d);
+  }
+  const row = document.createElement('div');
+  row.className = 'confirm-actions';
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'btn primary start-go';
+  go.textContent = button;
+  const later = document.createElement('button');
+  later.type = 'button';
+  later.className = 'btn start-later';
+  later.textContent = 'Später';
+  const done = () => { go.disabled = later.disabled = true; div.classList.add('confirm-done'); };
+  go.addEventListener('click', () => { done(); div.remove(); onStart?.(); });
+  later.addEventListener('click', () => { done(); div.remove(); });
+  row.append(go, later);
+  body.append(row);
+  div.append(who, body);
+  chat.append(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}

@@ -118,6 +118,16 @@ Antwort da ist. Technisch: `stream: true` an die OpenAI-kompatiblen Endpunkte
   das Ereignis-Protokoll (`{v, type, id, room, from, ts, …}` mit `msg`/`delta`/`ack`)
   und einen lokalen Transport, der nichts sendet. Ein Server ist (noch) nicht nötig.
 
+## ☀️ Morgen-Briefing
+
+Beim **ersten Öffnen nach dem Aufwachen** (keine Nutzung seit mindestens 4 Stunden, einstellbar 3–8 h) begrüßt Jarvis Sie mit einem kurzen Tagesüberblick: Wetter am **aktuellen Standort** (Open-Meteo, ohne Schlüssel), Termine (nur Android-App, Kalender nur lesend), Nachrichten der **tagesschau** (RSS; Ressorts wählbar) und Hinweise wie knapper Akku.
+
+- Startet höchstens **einmal pro Tag** (Tag beginnt um 3 Uhr), nie zwischen 23 und 3 Uhr und nur bis zur eingestellten Uhrzeit (Standard 14 Uhr, einstellbar bis 23 Uhr).
+- Jederzeit per Sprache: „Guten Morgen“, „Briefing“, „Was steht heute an?“. Einstellungen per Sprache: „Briefing aus/an“, „Nachrichten nur Sport und Wirtschaft“, „alle Nachrichten“, „keine Nachrichten“.
+- Im Browser verhindert die Autoplay-Sperre das sofortige Vorlesen – dann erscheint eine Karte „Briefing starten“.
+- Datenschutz: Der Standort wird auf ca. 1 km gerundet, nur an Open-Meteo geschickt und **nie an die KI**. Fremde Texte (Schlagzeilen, Termine) werden bereinigt und als reine Daten markiert; das Briefing selbst ruft keine Werkzeuge auf.
+- **Android (ab v0.4):** optional „Im Hintergrund bereithalten“ (Standard aus). Dann zeigt Jarvis beim ersten Entsperren am Morgen eine stille Benachrichtigung mit der Kurzfassung und liest sie auf Wunsch vor (nicht bei Anruf, lautlos/Vibration oder „Nicht stören“; Lautstärke wird nie verändert). Die Hintergrund-Kurzfassung entsteht ohne KI und ohne API-Schlüssel.
+
 ## ⚠️ Einschränkungen
 
 - **Wake-Word nur bei offener App und eingeschaltetem Bildschirm.** Browser dürfen im Hintergrund oder bei

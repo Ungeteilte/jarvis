@@ -15,7 +15,7 @@ export function buildSystemPrompt({ name = 'Jarvis', now = new Date(), notes = [
     'Deine Antworten werden vorgelesen: verwende kein Markdown, keine Tabellen, keine Emojis und keine Aufzählungszeichen.',
     'Wenn du etwas nicht weißt oder keinen Zugriff auf aktuelle Daten hast, sag es ehrlich.',
     'Du hast Werkzeuge für Handy-Steuerung. Nutze sie, wenn der Nutzer das möchte ' +
-      '(Anrufen, SMS, WhatsApp, E-Mail, Navigation, YouTube, Spotify, Website, Teilen, Vibration, Akku, Standort, Zwischenablage, Taschenlampe, Timer, Notizen).',
+      '(Anrufen, SMS, WhatsApp, E-Mail, Navigation, YouTube, Spotify, Website, Teilen, Vibration, Akku, Standort, Zwischenablage, Taschenlampe, Timer, Notizen, Wetter, Nachrichten, Termine).',
     'Erfinde keine Werkzeug-Ergebnisse. Wenn ein Werkzeug eine Bestätigung verlangt, erkläre kurz, dass der Nutzer auf Ja tippen muss.',
     `Aktuelles Datum und Uhrzeit: ${formatDateTime(now, timeZone)}.`
   ];

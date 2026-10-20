@@ -108,6 +108,43 @@
         <label class="switch"><input id="set-wake" type="checkbox"> Wake-Word „Hey <span class="name-ref">Jarvis</span>“ (nur bei offener App)</label>
       </fieldset>
 
+      <fieldset id="briefing-fieldset">
+        <legend>Morgen-Briefing</legend>
+        <label class="switch"><input id="set-brief-enabled" type="checkbox"> Morgen-Briefing beim ersten Öffnen nach dem Aufwachen</label>
+        <label>„Aufgewacht“ heißt: vorher mindestens
+          <select id="set-brief-gap"></select>
+        </label>
+        <label>Automatisch höchstens bis
+          <select id="set-brief-latest"></select>
+        </label>
+        <p class="hint">Zwischen 23 und 3 Uhr startet es nie von selbst. „Guten Morgen“, „Briefing“ oder „Was steht heute an?“ geht jederzeit.</p>
+        <p class="hint">Inhalte:</p>
+        <label class="switch"><input id="set-brief-weather" type="checkbox"> Wetter (aktueller Standort)</label>
+        <label class="switch native-only"><input id="set-brief-calendar" type="checkbox"> Termine aus dem Kalender</label>
+        <label class="switch"><input id="set-brief-news" type="checkbox"> Nachrichten (tagesschau.de)</label>
+        <label class="switch"><input id="set-brief-battery" type="checkbox"> Akku (nur wenn er knapp ist)</label>
+        <label class="switch"><input id="set-brief-notes" type="checkbox"> Notizen &amp; laufende Timer</label>
+        <p class="hint">Nachrichten-Rubriken (keine gewählt = alle Meldungen):</p>
+        <div id="brief-ressorts" class="ressorts"></div>
+        <p class="hint">Per Sprache: „Nachrichten nur Sport und Wirtschaft“, „Alle Nachrichten“, „Briefing aus“.</p>
+        <p id="brief-loc-status" class="hint"></p>
+        <button id="btn-brief-location" type="button" class="btn small">📍 Standort fürs Wetter erlauben</button>
+        <div class="native-only">
+          <label class="switch"><input id="set-brief-bg" type="checkbox"> Im Hintergrund bereithalten (meldet sich beim ersten Entsperren)</label>
+          <label class="switch"><input id="set-brief-speak" type="checkbox"> Im Hintergrund laut vorlesen (nicht bei Anruf, lautlos oder „Nicht stören“)</label>
+          <label class="switch"><input id="set-brief-titles" type="checkbox"> Termintitel nennen (Vorlesen &amp; Benachrichtigung)</label>
+          <p id="brief-native-status" class="hint"></p>
+          <div class="row wrap">
+            <button id="btn-brief-notif" type="button" class="btn small">🔔 Benachrichtigungen erlauben</button>
+            <button id="btn-brief-cal" type="button" class="btn small">📅 Kalender erlauben</button>
+            <button id="btn-brief-battery" type="button" class="btn small">🔋 Akku: nicht einschränken</button>
+            <button id="btn-brief-appsettings" type="button" class="btn small">⚙️ App-Einstellungen</button>
+          </div>
+          <p class="hint">Samsung: Einstellungen → Apps → Jarvis → Akku → „Nicht eingeschränkt“. Außerdem unter Akku → Hintergrundnutzungslimits Jarvis aus „Schlafende Apps“ und „Tief schlafende Apps“ entfernen.</p>
+        </div>
+        <button id="btn-brief-test" type="button" class="btn">▶ Jetzt testen</button>
+      </fieldset>
+
       <fieldset>
         <legend>Daten</legend>
         <button id="btn-shownotes" type="button" class="btn">Notizen anzeigen</button>

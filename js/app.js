@@ -14,6 +14,9 @@ import { createWebTTS } from './adapters/web-tts.js';
 import { createWebSTT } from './adapters/web-stt.js';
 import { beep, vibrate } from './adapters/web-audio.js';
 import { createWebDevice } from './adapters/web-device.js';
+import {
+  shouldBrief, recordActivity, mergeNativeState, loadBriefingState, saveBriefingState, dayKey, localParts, NIGHT_LOCK_HOUR, DAY_START_HOUR
+} from './core/briefing/index.js';
 
 // Native Capacitor-App setzt window.__JARVIS_ADAPTERS__ im Bootstrap.
 const _A = globalThis.__JARVIS_ADAPTERS__;
@@ -133,13 +136,24 @@ let turn = 0; // zählt Eingaben, damit eine alte Sprachausgabe keine neue stör
 async function handleInput(text) {
   const input = String(text || '').trim();
   if (!input || busy) return;
+  touchActivity();
+  view.addMessage({ role: 'user', text: input });
+  const reply = await runTurn((onDelta) => assistant.process(input, { onDelta }));
+  if (reply?.settingsChanged || reply?.source === 'briefing') { settings = loadSettings(store); syncNative(); }
+}
+
+/**
+ * Ein Antwort-Durchlauf (Nutzereingabe oder Briefing): Streaming-Blase, satzweise
+ * Sprachausgabe, Bestätigungskarten. exec(onDelta) → Antwort-Nachricht.
+ */
+async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
+  if (busy) return null;
   const myTurn = ++turn;
   busy = true;
   wake.pause();
   tts.cancel();
-  view.addMessage({ role: 'user', text: input });
   view.setOrbState('thinking');
-  view.setStatus('Einen Moment …');
+  view.setStatus(status);
   let hideTyping = view.showTyping();
   let reply = null;
   let bubble = null;   // wachsende Blase (nur bei Streaming)
@@ -167,7 +181,7 @@ async function handleInput(text) {
     }
   };
   try {
-    reply = await assistant.process(input, { onDelta });
+    reply = await exec(onDelta);
   } catch (e) {
     showError(e.message);
   } finally {
@@ -198,6 +212,125 @@ async function handleInput(text) {
     await say(reply.text);
   }
   if (myTurn === turn && !busy) { wake.resume(); idle(); }
+  return reply;
+}
+
+// ---------- Morgen-Briefing ----------
+const nativeBriefing = device.briefing || null; // nur Android-App
+const deviceTz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null; } catch { return null; } };
+let briefingChecking = false;
+
+/** Aktivität merken (Öffnen, Eingabe, Herzschlag alle 60 s bei sichtbarer App). */
+function touchActivity() {
+  saveBriefingState(store, recordActivity(loadBriefingState(store), Date.now()));
+}
+
+/** Konfiguration + Zustand an den nativen Hintergrund-Teil geben (Android). */
+function syncNative() {
+  if (!nativeBriefing) return null;
+  const st = loadBriefingState(store);
+  return nativeBriefing.sync({
+    config: settings.briefing,
+    lastActiveAt: st.lastActiveAt || 0,
+    lastBriefingDay: st.lastBriefingDay || '',
+    coords: st.coords || null,
+    tz: deviceTz(),
+    name: persona.name,
+    onboarded: Boolean(persona.onboarded),
+    voice: { voiceId: persona.voiceId || '', rate: persona.rate, pitch: persona.pitch }
+  });
+}
+
+/** Tages-Anspruch sichern (mehrere Tabs: Web-Locks; sonst einfache Prüfung). */
+async function claimBriefingDay(day) {
+  const claim = () => {
+    if (loadBriefingState(store).lastBriefingDay === day) return false;
+    saveBriefingState(store, { lastBriefingDay: day });
+    return true;
+  };
+  if (globalThis.navigator?.locks?.request) {
+    try { return await navigator.locks.request('jarvis-briefing', { ifAvailable: true }, (lock) => (lock ? claim() : false)); } catch { /* weiter */ }
+  }
+  return claim();
+}
+
+/** Briefing starten – im Browser ohne vorherige Geste erst per Tipp-Karte (Autoplay-Sperre). */
+function startBriefing({ auto = true, card = null } = {}) {
+  const run = () => runTurn((onDelta) => assistant.brief({ onDelta, auto }), { status: 'Ich stelle Ihr Briefing zusammen …' })
+    .then(() => syncNative());
+  const needsGesture = !globalThis.__JARVIS_NATIVE__ && settings.speak && tts.isSupported()
+    && globalThis.navigator?.userActivation && !navigator.userActivation.hasBeenActive;
+  if (card || needsGesture) {
+    view.addStartCard(card || {
+      id: 'briefing-card',
+      title: '☀️ Guten Morgen – Ihr Briefing ist bereit',
+      detail: 'Tippen zum Starten (Wetter, Termine, Nachrichten).',
+      button: '▶ Briefing starten'
+    }, run);
+    return;
+  }
+  run();
+}
+
+const inAutoWindow = (nowMs, cfg) => {
+  const h = localParts(nowMs).h;
+  return h >= DAY_START_HOUR && h < NIGHT_LOCK_HOUR && h < cfg.latestHour;
+};
+
+/** Prüft beim Öffnen/Zurückkehren, ob jetzt das Morgen-Briefing fällig ist. Danach Aktivität merken. */
+async function maybeAutoBriefing() {
+  if (briefingChecking) return;
+  briefingChecking = true;
+  try {
+    settings = loadSettings(store);
+    const cfg = settings.briefing;
+    if (!cfg.enabled || !persona.onboarded || busy) return;
+    const nowMs = Date.now();
+    const today = dayKey(nowMs);
+    if (nativeBriefing) {
+      // Aus der Benachrichtigung geöffnet? Dann gilt das (einmalig abgeholt – kein doppeltes Briefing)
+      const launch = await nativeBriefing.consumeLaunch();
+      if (launch?.requested) { onNativeLaunch(launch); return; }
+    }
+    const native = nativeBriefing ? await nativeBriefing.getState() : null;
+    applyNativeBackgroundOff(native);
+    const state = mergeNativeState(loadBriefingState(store), native);
+    if (native?.bgDay === today && state.lastBriefingDay !== today && inAutoWindow(nowMs, cfg)) {
+      // Der Hintergrund-Dienst hat beim Entsperren schon geprüft (und ggf. benachrichtigt/vorgelesen)
+      if (!(await claimBriefingDay(today))) return;
+      if (native.bgSpoken) {
+        startBriefing({ card: { id: 'briefing-card', title: 'Ausführliches Briefing?', detail: 'Die Kurzfassung habe ich Ihnen vorhin schon vorgelesen.', button: '▶ Ausführlich' } });
+      } else startBriefing();
+      return;
+    }
+    const d = shouldBrief({ nowMs, state, cfg, onboarded: persona.onboarded });
+    if (!d.ok) return;
+    if (await claimBriefingDay(d.day)) startBriefing();
+  } catch (e) {
+    console.warn('[Jarvis] Briefing-Prüfung', e);
+  } finally {
+    touchActivity();
+    briefingChecking = false;
+  }
+}
+
+/** „Ausschalten“ in der Dauer-Benachrichtigung → Einstellung übernehmen (statt sie wieder einzuschalten). */
+function applyNativeBackgroundOff(native) {
+  if (!nativeBriefing || !native?.bgOffByNotification) return;
+  if (settings.briefing.background) {
+    settings = saveSettings(store, { briefing: { ...settings.briefing, background: false } });
+  }
+  nativeBriefing.setBackground(false); // quittiert den Hinweis
+}
+
+/** Start aus der Benachrichtigung „Guten Morgen – Ihr Briefing ist bereit“ (Android). */
+function onNativeLaunch(r) {
+  if (!r?.requested) return;
+  const last = loadBriefingState(store).lastBriefingAt || 0;
+  if (busy || Date.now() - last < 2 * 60000) return; // läuft schon / gerade erst
+  touchActivity();
+  if (r.trusted) startBriefing({ auto: true });
+  else startBriefing({ card: { id: 'briefing-card', title: 'Briefing starten?', detail: 'Möchten Sie jetzt Ihr Morgen-Briefing hören?', button: '▶ Briefing starten' } });
 }
 
 let listening = false;
@@ -260,12 +393,21 @@ function showSettings(open) {
 const settingsView = createSettingsView({
   store,
   tts,
+  device,
   onSaved: ({ settings: s, persona: p }) => {
     settings = s;
     applyPersona(p);
     view.updateMute(s.speak);
     setWake(s.wakeWord);
     showSettings(false);
+    if (nativeBriefing) {
+      Promise.resolve(syncNative()).then(() => nativeBriefing.setBackground(s.briefing.background && s.briefing.enabled));
+    }
+  },
+  onTestBriefing: () => {
+    settings = loadSettings(store);
+    showSettings(false);
+    startBriefing({ auto: false });
   },
   onClearChat: () => { assistant.clearHistory(); view.renderHistory([]); }
 });
@@ -293,6 +435,7 @@ async function onboarding() {
       settings = saveSettings(store, { provider: obProvider.value, apiKeys: { ...settings.apiKeys, [obProvider.value]: key } });
     }
     say(greet());
+    touchActivity();
   }, { once: true });
   dlg.showModal();
 }
@@ -325,9 +468,11 @@ function init() {
 
   // App im Hintergrund → Mikrofon freigeben; wieder sichtbar → weiter hören
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { wake.pause(); tts.cancel(); }
-    else wake.resume();
+    if (document.hidden) { wake.pause(); tts.cancel(); touchActivity(); syncNative(); }
+    else { wake.resume(); maybeAutoBriefing(); }
   });
+  // Herzschlag: solange die App sichtbar ist, gilt der Nutzer als aktiv
+  setInterval(() => { if (!document.hidden && !briefingChecking) touchActivity(); }, 60000);
 
   timers.restore();
   setInterval(() => view.updateTimerChip(timers.list(), formatDuration), 1000);
@@ -338,6 +483,21 @@ function init() {
   else if (!stt.isSupported()) view.setStatus('Spracherkennung nicht verfügbar – bitte Chrome nutzen.');
 
   onboarding();
+
+  // Morgen-Briefing: beim ersten Öffnen nach dem Aufwachen (bzw. aus der Benachrichtigung)
+  (async () => {
+    await maybeAutoBriefing(); // holt auch einen Start aus der Benachrichtigung ab
+    nativeBriefing?.onLaunch?.(async () => {
+      const r = await nativeBriefing.consumeLaunch();
+      if (r?.requested) onNativeLaunch(r);
+    });
+    await syncNative();
+    if (nativeBriefing) {
+      applyNativeBackgroundOff(await nativeBriefing.getState());
+      if (settings.briefing.enabled && settings.briefing.background) nativeBriefing.setBackground(true);
+    }
+  })();
+  globalThis.__JARVIS_BRIEFING__ = { check: maybeAutoBriefing, start: (o) => startBriefing(o) };
 
   if (!globalThis.__JARVIS_NATIVE__ && 'serviceWorker' in navigator && window.isSecureContext) {
     navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('Service Worker:', e));

@@ -4,8 +4,9 @@ import { PROVIDERS, loadSettings, saveSettings, resolveProvider } from '../core/
 import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from '../core/persona.js';
 import { askAI, listModels } from '../core/ai.js';
 import { loadNotes } from '../core/skills.js';
+import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig } from '../core/briefing/index.js';
 
-export function createSettingsView({ store, tts, onSaved, onClearChat }) {
+export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing }) {
   const f = {
     provider: $('#set-provider'), baseurl: $('#set-baseurl'), rowBase: $('#row-baseurl'),
     apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
@@ -93,7 +94,98 @@ export function createSettingsView({ store, tts, onSaved, onClearChat }) {
     f.speak.checked = draft.speak;
     f.wake.checked = draft.wakeWord;
     f.notes.classList.add('hidden');
+    fillBriefing(draft.briefing);
     refreshVoices();
+  }
+
+  // ---------- Morgen-Briefing ----------
+  const b = {
+    enabled: $('#set-brief-enabled'), gap: $('#set-brief-gap'), latest: $('#set-brief-latest'),
+    weather: $('#set-brief-weather'), calendar: $('#set-brief-calendar'), news: $('#set-brief-news'),
+    battery: $('#set-brief-battery'), notes: $('#set-brief-notes'), ressorts: $('#brief-ressorts'),
+    bg: $('#set-brief-bg'), speak: $('#set-brief-speak'), titles: $('#set-brief-titles'),
+    loc: $('#brief-loc-status'), nativeStatus: $('#brief-native-status')
+  };
+  const nb = device?.briefing || null;
+  b.gap.replaceChildren(...GAP_OPTIONS.map((h) => new Option(`${h} Stunden Pause`, String(h))));
+  b.latest.replaceChildren(...LATEST_OPTIONS.map((h) => new Option(`${h}:00 Uhr`, String(h))));
+  b.ressorts.replaceChildren(...RESSORT_IDS.map((id) => {
+    const l = document.createElement('label');
+    const c = document.createElement('input');
+    c.type = 'checkbox'; c.value = id; c.className = 'brief-ressort';
+    l.append(c, document.createTextNode(' ' + RESSORTS[id].label));
+    return l;
+  }));
+
+  function fillBriefing(cfg) {
+    b.enabled.checked = cfg.enabled;
+    b.gap.value = String(cfg.gapHours);
+    b.latest.value = String(cfg.latestHour);
+    b.weather.checked = cfg.content.weather;
+    b.calendar.checked = cfg.content.calendar;
+    b.news.checked = cfg.content.news;
+    b.battery.checked = cfg.content.battery;
+    b.notes.checked = cfg.content.notes;
+    b.ressorts.querySelectorAll('input').forEach((c) => { c.checked = cfg.newsRessorts.includes(c.value); });
+    b.bg.checked = cfg.background;
+    b.speak.checked = cfg.speakAloud;
+    b.titles.checked = cfg.speakTitles;
+    renderLocation();
+    renderNativeStatus();
+  }
+
+  function readBriefing() {
+    return normalizeBriefingConfig({
+      enabled: b.enabled.checked,
+      gapHours: Number(b.gap.value),
+      latestHour: Number(b.latest.value),
+      content: { weather: b.weather.checked, calendar: b.calendar.checked, news: b.news.checked, battery: b.battery.checked, notes: b.notes.checked },
+      newsRessorts: [...b.ressorts.querySelectorAll('input:checked')].map((c) => c.value),
+      background: b.bg.checked,
+      speakAloud: b.speak.checked,
+      speakTitles: b.titles.checked
+    }, RESSORT_IDS);
+  }
+
+  function renderLocation() {
+    const c = loadBriefingState(store).coords;
+    if (!c?.at) { b.loc.textContent = '📍 Standort fürs Wetter: noch nicht ermittelt.'; return; }
+    const min = Math.round((Date.now() - c.at) / 60000);
+    const ago = min < 60 ? `vor ${min} Min.` : min < 1440 ? `vor ${Math.round(min / 60)} Std.` : `vor ${Math.round(min / 1440)} Tagen`;
+    b.loc.textContent = `📍 Standort fürs Wetter zuletzt ${ago} ermittelt (auf ca. 1 km gerundet, geht nur an Open-Meteo).`;
+  }
+
+  async function renderNativeStatus() {
+    if (!nb) return;
+    const st = await nb.status();
+    if (!st) { b.nativeStatus.textContent = ''; return; }
+    const yes = (v, a, n) => (v ? a : n);
+    b.nativeStatus.textContent = [
+      `Hintergrund: ${yes(st.serviceRunning, 'läuft', 'aus')}`,
+      `Benachrichtigungen: ${yes(st.notifications, 'erlaubt', 'aus')}`,
+      `Kalender: ${st.calendar === 'granted' ? 'erlaubt' : 'nicht erlaubt'}`,
+      `Akku-Optimierung: ${yes(st.ignoringBattery, 'aus (gut)', 'aktiv – kann den Dienst beenden')}`
+    ].join(' · ');
+  }
+
+  $('#btn-brief-location').addEventListener('click', async () => {
+    b.loc.textContent = '📍 Frage Standort ab …';
+    const r = await resolveCoords({ device, store, interactive: true, now: new Date(), timeZone: undefined });
+    if (r.source === 'live') { renderLocation(); toast('Standort ermittelt.'); }
+    else { renderLocation(); toast(r.reason === 'denied' ? 'Standort-Erlaubnis verweigert – bitte in den Einstellungen des Browsers/Handys erlauben.' : 'Standort gerade nicht verfügbar.'); }
+  });
+  $('#btn-brief-test').addEventListener('click', () => {
+    stashProvider();
+    saveSettings(store, { briefing: readBriefing() });
+    onTestBriefing?.();
+  });
+  const nbBtn = (id, fn) => $(id)?.addEventListener('click', async () => { await fn(); setTimeout(renderNativeStatus, 800); });
+  if (nb) {
+    nbBtn('#btn-brief-notif', () => nb.requestNotifications());
+    nbBtn('#btn-brief-cal', () => nb.requestCalendar());
+    nbBtn('#btn-brief-battery', () => nb.requestIgnoreBattery());
+    nbBtn('#btn-brief-appsettings', () => nb.openAppSettings());
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#view-settings').classList.contains('hidden')) renderNativeStatus(); });
   }
 
   function draftConfig() {
@@ -176,7 +268,8 @@ export function createSettingsView({ store, tts, onSaved, onClearChat }) {
       models: draft.models,
       customBaseUrl: draft.customBaseUrl,
       speak: f.speak.checked,
-      wakeWord: f.wake.checked
+      wakeWord: f.wake.checked,
+      briefing: readBriefing()
     });
     const persona = savePersona(store, currentPersonaFromForm());
     toast('Gespeichert.');
