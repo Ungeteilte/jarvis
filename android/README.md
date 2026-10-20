@@ -28,6 +28,33 @@ cd android && ./gradlew assembleDebug
 Siehe `INSTALL-DE.md` für die Installation auf dem Galaxy A55.
 
 
+## 👂 Wake-Word / Spracherkennung (ab v0.7)
+
+Fehler bis v0.6: Der Dauer-Zuhören-Kreislauf in `native-stt.js` fragte `isListening` alle 300 ms ab und startete die
+Erkennung des Community-Plugins nach 350 ms neu – ohne Backoff, bei langsamem Plugin-Thread (blockierendes `speak`)
+mehrfach parallel; `stop()` des Plugins kehrt nie zurück. Folge: Piepton im Sekundentakt, überlappende Erkenner,
+hängendes Mikrofon.
+
+Jetzt:
+- **Ein Erkenner**: `JarvisNative.sttStart({session, language, partial, muteBeep})` / `sttCancel()` / Ereignis
+  `sttEvent {session, type: ready|partial|final|error, text, code, kind}`. `NativeRecognizer` (Paket `stt`) läuft
+  komplett auf dem Main-Thread, zerstört den alten `SpeechRecognizer` vor jedem Neustart, Ereignisse alter Sitzungen
+  werden verworfen. Fehlerklassen in `SttErrors` (6/7 Stille, 8 belegt, 9/12/13 endgültig, sonst erneut versuchen).
+- **Zustandsautomat** `js/core/listen-loop.js`: nie zwei Starts gleichzeitig; Stille 0,4/0,4/0,8/1,5/3 s; Fehler
+  1/2/4/8/16 s, nach 6 Fehlern Pause + Hinweis; Watchdog 20 s.
+- **Pausen mit Gründen** (`wake-controller.js`): `tts`, `turn`, `mic`, `hidden`, `bg-tts` – das Wake-Word läuft erst
+  wieder, wenn kein Grund mehr offen ist (nach TTS 0,7 s Verzögerung gegen Eigenecho). Hintergrund-Sprachausgabe
+  (`BriefingSpeaker`) meldet `backgroundSpeech {speaking}`.
+- **`speak` blockiert den Plugin-Thread nicht mehr** (vorher bis 120 s Warten → alle anderen Aufrufe stauten sich).
+- **Startton unterdrücken** (Einstellung, Standard an, nur Wake-Word): `BeepMuter` schaltet für ca. 1 s
+  `STREAM_SYSTEM` und – nur wenn gerade keine Musik läuft – `STREAM_MUSIC` stumm (`ADJUST_MUTE`) und danach wieder
+  laut (`ADJUST_UNMUTE`, ändert nie die Lautstärke). Abwägung: Es gibt kein offizielles Extra gegen den Piepton.
+  Benachrichtigungs-/Klingelton werden bewusst **nicht** angefasst (Samsung kann sonst den Klingelmodus ändern /
+  „Nicht stören“ verlangt Sonderrecht). Bei „Nicht stören“ oder Telefonat wird nichts stummgeschaltet. Stummgeschaltete
+  Streams stehen in den Prefs `jarvis_stt` und werden nach einem Absturz beim nächsten Start wiederhergestellt.
+  Je nach Gerät/Spracherkennungs-App kommt der Ton über einen anderen Stream – dann bleibt er hörbar.
+  Der Mikrofon-Knopf behält den Ton (Rückmeldung „ich höre zu“).
+
 ## ☀️ Morgen-Briefing im Hintergrund (ab v0.4)
 
 Paket `com.jarvis.assistant.briefing`: Vordergrund-Dienst `BriefingService` (Typ `specialUse`, nur wenn „Im Hintergrund bereithalten“ an ist) hört auf `SCREEN_OFF`/`USER_PRESENT`; Regeln in `BriefingRules` (gleiche Testfälle wie JS: `tests/fixtures/briefing-rules.json` = `app/src/test/resources/briefing-rules.json`). Tägliches Vorladen `jarvis-briefing-prefetch` (WorkManager, ca. 04:30) – unabhängig von `jarvis-update-check`. Netz nur zu `api.open-meteo.com` und `www.tagesschau.de` über `SafeHttp` mit eigener Erlaubnisliste (`BriefingPolicy`). Kanäle `ready_v1` (minimal, lautlos) und `briefing_v1` (leise). Start aus der Benachrichtigung mit Einmal-Schlüssel. Kalender über `CalendarReader` (READ_CALENDAR, nur lesen).

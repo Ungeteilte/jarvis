@@ -145,6 +145,10 @@ export function createNativeDevice() {
         return { ok: false, message: e.message };
       }
     },
+    /** Vorlesen des Hintergrund-Dienstes (Briefing/Rückblick) beginnt/endet → cb(true|false). */
+    onBackgroundSpeech(cb) {
+      try { J()?.addListener?.('backgroundSpeech', (e) => cb(Boolean(e?.speaking))); } catch { /* egal */ }
+    },
     async setSystemAlarm({ hour, minute, message }) {
       try {
         await J().setAlarm({ hour, minute, message: message || 'Jarvis Wecker' });

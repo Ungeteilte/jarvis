@@ -73,6 +73,10 @@ test('Plugin: speak wartet auch auf onStop (stopSpeaking hängt nicht)', () => {
   for (const p of ['../android/android/app/src/main/java/com/jarvis/assistant/JarvisNativePlugin.java',
     '../android/native-android/java/com/jarvis/assistant/JarvisNativePlugin.java']) {
     const s = read(p);
-    assert.match(s, /public void onStop\(String utteranceId, boolean interrupted\) \{ done\.countDown\(\); \}/, p);
+    // v0.7: speak blockiert den Plugin-Thread nicht mehr; done/error/stop beenden den Aufruf.
+    assert.match(s, /public void onStop\(String utteranceId, boolean interrupted\) \{ finishSpeak\(utteranceId\); \}/, p);
+    assert.match(s, /public void onDone\(String utteranceId\) \{ finishSpeak\(utteranceId\); \}/, p);
+    assert.doesNotMatch(s, /CountDownLatch/, p + ': speak darf den Plugin-Thread nicht blockieren');
+    assert.match(s, /void stopSpeaking[\s\S]{0,400}resolveAllSpeak\(\)/, p);
   }
 });

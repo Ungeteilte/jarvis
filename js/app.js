@@ -32,7 +32,8 @@ const { $ } = view;
 // ---------- Dienste ----------
 const store = createStore(_A?.storage ? _A.storage() : createWebStorageAdapter());
 const tts = _A?.tts ? _A.tts() : createWebTTS();
-const stt = _A?.stt ? _A.stt({ lang: 'de-DE' }) : createWebSTT({ lang: 'de-DE' });
+// getMuteBeep: Android – Startton der Erkennung beim Wake-Word kurz stummschalten (Einstellung)
+const stt = _A?.stt ? _A.stt({ lang: 'de-DE', getMuteBeep: () => settings.wakeMuteBeep !== false }) : createWebSTT({ lang: 'de-DE' });
 const device = _A?.device ? _A.device() : createWebDevice();
 console.info(`[Jarvis] Adapter: ${adapterKind(_A)}`);
 let settings = loadSettings(store);
@@ -73,6 +74,16 @@ const wake = createWakeController({
   }
 });
 
+// Liest der Android-Hintergrunddienst gerade vor, darf das Wake-Word nicht mithören.
+let bgSpeechTimer = null;
+device.onBackgroundSpeech?.((speaking) => {
+  clearTimeout(bgSpeechTimer);
+  if (speaking) {
+    wake.pause('bg-tts');
+    bgSpeechTimer = setTimeout(() => wake.resume('bg-tts'), 100000); // Sicherheitsnetz (max. Vorlesedauer 90 s)
+  } else wake.resume('bg-tts', { delayMs: 800 });
+});
+
 // ---------- Kernabläufe ----------
 function idle() {
   busy = false;
@@ -92,16 +103,26 @@ function showError(text) {
   setTimeout(() => { if (!busy) idle(); }, 4000);
 }
 
+// Jede Sprachausgabe läuft hier durch: Wake-Word ist pausiert, solange IRGENDEINE Ausgabe läuft,
+// und hört erst kurz danach wieder zu (sonst hört Jarvis den Nachhall der eigenen Stimme).
+const WAKE_RESUME_AFTER_TTS_MS = 700;
+let ttsActive = 0;
+async function speakTts(text, p = persona) {
+  ttsActive++;
+  wake.pause('tts');
+  try {
+    await tts.speak(text, p);
+  } finally {
+    ttsActive = Math.max(0, ttsActive - 1);
+    if (!ttsActive) wake.resume('tts', { delayMs: WAKE_RESUME_AFTER_TTS_MS });
+  }
+}
+
 /** Spricht einen Text (falls Sprachausgabe an ist). Wake-Word pausiert solange. */
 async function say(text) {
   if (!settings.speak || !tts.isSupported()) return;
-  wake.pause();
   view.setOrbState('speaking');
-  try {
-    await tts.speak(text, persona);
-  } finally {
-    wake.resume();
-  }
+  await speakTts(text);
 }
 
 /**
@@ -119,9 +140,9 @@ function createSentenceSpeaker(myTurn) {
       spoken += (spoken ? ' ' : '') + s;
       chain = chain.then(async () => {
         if (cancelled || myTurn !== turn || !settings.speak || !tts.isSupported()) return;
-        if (!started) { started = true; wake.pause(); }
+        started = true;
         view.setOrbState('speaking');
-        try { await tts.speak(s, persona); } catch { /* nächster Satz */ }
+        try { await speakTts(s); } catch { /* nächster Satz */ }
       });
     }
   };
@@ -133,7 +154,6 @@ function createSentenceSpeaker(myTurn) {
     async finish() {
       if (!cancelled) enqueue(chunker.flush());
       await chain;
-      if (started) wake.resume();
     }
   };
 }
@@ -156,7 +176,7 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
   if (busy) return null;
   const myTurn = ++turn;
   busy = true;
-  wake.pause();
+  wake.pause('turn');
   tts.cancel();
   view.setOrbState('thinking');
   view.setStatus(status);
@@ -217,7 +237,7 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
     view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
     await say(reply.text);
   }
-  if (myTurn === turn && !busy) { wake.resume(); idle(); }
+  if (myTurn === turn && !busy) { wake.resume('turn', { delayMs: WAKE_RESUME_AFTER_TTS_MS }); idle(); }
   return reply;
 }
 
@@ -372,7 +392,7 @@ async function onMic() {
   if (listening) { stt.abort(); return; }
   if (busy) return;
   tts.cancel();
-  wake.pause();
+  wake.pause('mic');
   listening = true;
   view.setMicActive(true);
   view.setOrbState('listening');
@@ -388,7 +408,7 @@ async function onMic() {
     view.setMicActive(false);
     showError(e.message);
   } finally {
-    wake.resume();
+    wake.resume('mic', { delayMs: 300 });
   }
 }
 
@@ -463,7 +483,7 @@ async function onboarding() {
   showHint();
   $('#ob-preview').onclick = () => {
     const p = { ...persona, name: sanitizeName($('#ob-name').value), voiceId: $('#ob-voice').value };
-    tts.speak(previewSentence(p.name), p);
+    speakTts(previewSentence(p.name), p);
   };
   dlg.addEventListener('close', () => {
     applyPersona(savePersona(store, { name: $('#ob-name').value, voiceId: $('#ob-voice').value, onboarded: true }));
@@ -505,8 +525,8 @@ function init() {
 
   // App im Hintergrund → Mikrofon freigeben; wieder sichtbar → weiter hören
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { wake.pause(); tts.cancel(); touchActivity(); syncNative(); }
-    else { wake.resume(); maybeAutoBriefing(); }
+    if (document.hidden) { wake.pause('hidden'); tts.cancel(); touchActivity(); syncNative(); }
+    else { wake.resume('hidden', { delayMs: 400 }); maybeAutoBriefing(); }
   });
   // Herzschlag: solange die App sichtbar ist, gilt der Nutzer als aktiv
   setInterval(() => { if (!document.hidden && !briefingChecking) touchActivity(); }, 60000);

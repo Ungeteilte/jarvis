@@ -144,10 +144,13 @@ Beim **ersten Öffnen am Abend** (Standard ab 19 Uhr, einstellbar 17–22 Uhr, b
 - **Android-Chrome beendet die Spracherkennung regelmäßig** (nach einigen Sekunden Stille). Jarvis startet sie
   automatisch neu. Dabei kann Android jedes Mal einen kurzen **Signalton** abspielen – das ist ein Systemverhalten.
   Abhilfe: Medien-/Systemlautstärke anpassen oder Wake-Word nur bei Bedarf einschalten.
+  In der **Android-App (ab v0.7)** wartet Jarvis bei Stille immer länger zwischen den Neustarts (0,4 s → bis 3 s),
+  bei Fehlern exponentiell (1 s → 16 s) und pausiert das Wake-Word nach 6 Fehlern mit einem Hinweis. Der Startton
+  kann unterdrückt werden (Einstellung „Startton … unterdrücken“, siehe `android/README.md`).
 - **Mikrofon nur über HTTPS** (oder `localhost` am PC). Über `http://` oder als lokal geöffnete Datei funktioniert es nicht.
 - **Spracherkennung braucht Internet** (Chrome schickt das Audio an Googles Spracherkennung).
 - **Samsung Internet / Firefox** unterstützen die Spracherkennung nicht oder nur eingeschränkt → **Chrome** benutzen.
-- Während Jarvis spricht, hört das Wake-Word nicht zu (damit er sich nicht selbst „hört“).
+- Während Jarvis spricht (auch Morgen-Briefing/Abendzusammenfassung im Hintergrund), hört das Wake-Word nicht zu (damit er sich nicht selbst „hört“). Es hört erst ca. 0,7 s nach dem letzten Satz wieder zu.
 - Timer klingeln nur, wenn die App offen ist. Ist ein Timer abgelaufen, während die App zu war, meldet er sich beim nächsten Öffnen.
 - Verlauf, Notizen und Einstellungen liegen nur im Browser dieses Geräts. „Browserdaten löschen“ löscht sie auch.
 
@@ -208,6 +211,7 @@ js/core/            ★ Kern – reine Logik OHNE Browser-Funktionen (wiederverw
   persona.js          Name & Stimme (name, voiceId, rate, pitch) + Stimmen-Auswahl mit Fallback
   wakeword.js         Wake-Word-Erkennung („Hey <Name>“), fehlertolerant
   wake-controller.js  Ablauf des Wake-Word-Modus
+  listen-loop.js      Zustandsautomat für Dauer-Zuhören: nur eine Erkennung, Backoff bei Stille/Fehlern, Watchdog
   skills.js           Uhrzeit, Datum, Timer, Notizen
   timers.js           Timer-Verwaltung
   prompt.js           System-Prompt (Deutsch, Datum/Uhrzeit, Notizen)

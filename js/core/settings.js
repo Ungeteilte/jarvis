@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   customBaseUrl: '',
   speak: true,
   wakeWord: false,
+  wakeMuteBeep: true, // Android: Startton der Erkennung beim Wake-Word kurz stummschalten
   briefing: DEFAULT_BRIEFING,
   evening: DEFAULT_EVENING
 });
@@ -61,6 +62,7 @@ export function loadSettings(store) {
     apiKeys: { ...DEFAULT_SETTINGS.apiKeys, ...(s.apiKeys || {}) },
     models: { ...DEFAULT_SETTINGS.models, ...(s.models || {}) },
     briefing: normalizeBriefingConfig(s.briefing, RESSORT_IDS),
+    wakeMuteBeep: typeof s.wakeMuteBeep === 'boolean' ? s.wakeMuteBeep : DEFAULT_SETTINGS.wakeMuteBeep,
     evening: normalizeEveningConfig(s.evening)
   };
 }

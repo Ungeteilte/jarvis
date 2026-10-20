@@ -79,8 +79,13 @@ final class BriefingSpeaker {
                 @Override public void onError(String id) { done.countDown(); }
             });
             if (blockReason(c) != null) return false; // in der Zwischenzeit Anruf / lautlos?
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), "jarvis-briefing");
-            done.await(90, TimeUnit.SECONDS);
+            BackgroundSpeech.set(true); // offene App: Wake-Word pausieren
+            try {
+                tts.speak(text, TextToSpeech.QUEUE_FLUSH, new Bundle(), "jarvis-briefing");
+                done.await(90, TimeUnit.SECONDS);
+            } finally {
+                BackgroundSpeech.set(false);
+            }
             return true;
         } catch (Exception e) {
             return false;

@@ -1,6 +1,6 @@
 // Service Worker: speichert die App-Dateien, damit Jarvis schnell startet
 // und installierbar ist. Bei Änderungen an den Dateien VERSION erhöhen!
-const VERSION = 'jarvis-v10';
+const VERSION = 'jarvis-v11';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './js/core/persona.js',
   './js/core/wakeword.js',
   './js/core/wake-controller.js',
+  './js/core/listen-loop.js',
   './js/core/skills.js',
   './js/core/timers.js',
   './js/core/prompt.js',

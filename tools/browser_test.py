@@ -285,7 +285,7 @@ with sync_playwright() as p:
             const now = Date.now();
             localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Jarvis', onboarded: true }));
             localStorage.setItem('jarvis.settings', JSON.stringify({ provider: 'gemini', apiKeys: { gemini: 'test-key' }, speak: true }));
-            localStorage.setItem('jarvis.briefingState', JSON.stringify({ lastActiveAt: now - 6 * 3600000 }));
+            localStorage.setItem('jarvis.briefingState', JSON.stringify({ lastActiveAt: Date.parse('2026-10-20T01:10:00+02:00') })); // fest: 6 h vor der Testzeit (unabhängig vom echten Datum)
           }
         """)
         bpage = bctx.new_page()

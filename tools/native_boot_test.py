@@ -4,6 +4,9 @@ Baut www wie android/scripts/sync-www.mjs (PWA + native/ + Bootstrap-Skript), si
 Capacitor-Bridge (JarvisNative, Preferences) mit verzögerten Antworten und lädt die Module gedrosselt.
 Prüft: native Adapter aktiv, JarvisNative.speak für Antwort und Vorhören, kein Willkommens-Dialog,
 kein speechSynthesis. Zusätzlich: Bridge hängt → nach ca. 3 s Start mit Web-Adaptern (Sicherheitsnetz).
+Wake-Word (v0.7): nachgestellte native Erkennung (JarvisNative.sttStart/sttCancel + sttEvent) –
+nie zwei Erkennungen gleichzeitig, kein Start während Jarvis spricht (auch Hintergrund-Vorlesen),
+Pausen nach Stille/Fehlern statt Dauer-Neustart, Startton-Unterdrückung nur beim Wake-Word.
 
 Aufruf: python3 tools/native_boot_test.py [--www PFAD]   (ohne --www: aus diesem Repo gebaut)
 """
@@ -50,25 +53,53 @@ FAKE = r"""
   const lat = (v) => new Promise((r) => setTimeout(() => r(v), CFG.bridgeMs));
   const never = () => new Promise(() => {});
   window.__nat = { speak: [], web: [], calls: [] };
+  const st = window.__stt = { starts: 0, overlaps: 0, active: null, speaking: 0, bg: false, startsDuringSpeak: 0, startsDuringBg: 0,
+    mode: CFG.sttMode || 'silence', segMs: CFG.segMs || 300, times: [], speakEnds: [], mute: [], cancels: 0, cbs: {} };
+  const emit = (name, ev) => (st.cbs[name] || []).forEach((cb) => { try { cb(ev); } catch (e) {} });
+  st.emitFinal = (text) => { const s = st.active; if (!s) return false; st.active = null; emit('sttEvent', { session: s, type: 'final', text }); return true; };
+  st.bgSpeech = (on) => { st.bg = on; emit('backgroundSpeech', { speaking: on }); };
   const secure = {
     'jarvis.persona': JSON.stringify({ name: 'Jarvis', onboarded: true, voiceId: '' }),
-    'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' } })
+    'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' }, wakeWord: Boolean(CFG.wake) })
   };
   const rec = (n, v) => () => { window.__nat.calls.push(n); return lat(v); };
   const base = {
     secureGet: ({ key }) => { window.__nat.calls.push('secureGet'); return CFG.hang ? never() : lat({ value: secure[key] ?? null }); },
     secureSet: ({ key, value }) => { secure[key] = value; return lat({}); },
     secureRemove: ({ key }) => { delete secure[key]; return lat({}); },
-    speak: (a) => { window.__nat.speak.push(a.text); return lat({}); },
+    speak: (a) => {
+      window.__nat.speak.push(a.text); st.speaking++;
+      return new Promise((r) => setTimeout(() => { st.speaking--; st.speakEnds.push(performance.now()); r({}); }, CFG.speakMs || CFG.bridgeMs));
+    },
+    sttStart: ({ session, muteBeep }) => {
+      st.starts++; st.times.push(performance.now()); st.mute.push(Boolean(muteBeep));
+      if (st.active) st.overlaps++;
+      if (st.speaking) st.startsDuringSpeak++;
+      if (st.bg) st.startsDuringBg++;
+      st.active = session;
+      setTimeout(() => {
+        if (st.active !== session) return;
+        emit('sttEvent', { session, type: 'ready' });
+        if (st.mode === 'manual') return;
+        setTimeout(() => {
+          if (st.active !== session) return;
+          st.active = null;
+          if (st.mode === 'busy') emit('sttEvent', { session, type: 'error', kind: 'busy', code: 8 });
+          else emit('sttEvent', { session, type: 'error', kind: 'silence', code: 7 });
+        }, st.mode === 'busy' ? 20 : st.segMs);
+      }, 30);
+      return lat({});
+    },
+    sttCancel: () => { st.cancels++; st.active = null; return lat({}); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
-    addListener: () => ({ remove() {} })
+    addListener: (name, cb) => { (st.cbs[name] = st.cbs[name] || []).push(cb); return { remove() {} }; }
   };
   const J = new Proxy(base, { get: (t, k) => (k in t ? t[k] : rec(String(k), {})) });
   window.Capacitor = {
     isNativePlatform: () => true, getPlatform: () => 'android',
-    Plugins: { JarvisNative: J, Preferences: { keys: () => lat({ keys: [] }), get: () => lat({ value: null }), set: () => lat({}), remove: () => lat({}) } }
+    Plugins: { JarvisNative: J, SpeechRecognition: { requestPermissions: () => lat({ speechRecognition: 'granted' }) }, Preferences: { keys: () => lat({ keys: [] }), get: () => lat({ value: null }), set: () => lat({}), remove: () => lat({}) } }
   };
   // Android-WebView hat kein speechSynthesis – Aufrufe hier wären der Fehler (Web-Adapter)
   try {
@@ -87,10 +118,10 @@ def safe(fn, *a, **k):
         print("INFO Aktion fehlgeschlagen:", str(e).splitlines()[0])
         return False
 
-def run(pw, *, bridge_ms, file_ms, hang=False):
+def run(pw, *, bridge_ms, file_ms, hang=False, **extra):
     b = pw.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox"])
     ctx = b.new_context(viewport={"width": 412, "height": 915}, locale="de-DE", timezone_id="Europe/Berlin")
-    ctx.add_init_script(FAKE % json.dumps({"bridgeMs": bridge_ms, "hang": hang}))
+    ctx.add_init_script(FAKE % json.dumps({"bridgeMs": bridge_ms, "hang": hang, **extra}))
     page = ctx.new_page()
     logs, errs = [], []
     page.on("console", lambda m: logs.append(m.text))
@@ -147,6 +178,62 @@ with sync_playwright() as pw:
     check("Hängende Bridge: keine JS-Fehler", not errs)
     errors.extend(errs)
     print(f"INFO Startzeit bei hängender Bridge: {started:.1f} s")
+    b.close()
+
+    # 3) Wake-Word: Satz → Antwort wird gesprochen; währenddessen KEIN Start der Erkennung
+    b, page, logs, errs, started = run(pw, bridge_ms=10, file_ms=0, wake=True, speakMs=1200, sttMode="manual")
+    try:
+        page.wait_for_function("window.__stt.starts >= 1 && window.__stt.active", timeout=5000)
+    except Exception:
+        pass
+    check("Wake: Erkennung gestartet (nativ, mit Startton-Unterdrückung)", page.evaluate("window.__stt.starts") == 1 and page.evaluate("window.__stt.mute[0]") is True)
+    page.evaluate("window.__stt.emitFinal('Hey Jarvis wie spät ist es')")
+    try:
+        page.wait_for_function("window.__stt.speakEnds.length >= 1", timeout=6000)
+    except Exception:
+        pass
+    page.wait_for_timeout(1500)
+    st = page.evaluate("({ starts: __stt.starts, overlaps: __stt.overlaps, during: __stt.startsDuringSpeak, times: __stt.times, ends: __stt.speakEnds, spoken: __nat.speak })")
+    check("Wake: Befehl ausgeführt und gesprochen", any("Uhr" in t for t in st["spoken"]))
+    check("Wake: kein Start der Erkennung während Jarvis spricht", st["during"] == 0)
+    gap = (st["times"][-1] - st["ends"][0]) if st["ends"] and len(st["times"]) >= 2 else -1
+    check("Wake: nach dem Sprechen wieder zuhören (mit Nachhall-Pause ≥ 600 ms)", st["starts"] == 2 and gap >= 600)
+    # Hintergrund-Dienst liest vor → Erkennung zu, danach wieder auf
+    c0 = page.evaluate("__stt.cancels")
+    page.evaluate("__stt.bgSpeech(true)")
+    page.wait_for_timeout(1500)
+    bg = page.evaluate("({ cancels: __stt.cancels, during: __stt.startsDuringBg, active: __stt.active })")
+    check("Wake: Hintergrund-Vorlesen pausiert die Erkennung", bg["cancels"] > c0 and bg["during"] == 0 and not bg["active"])
+    page.evaluate("__stt.bgSpeech(false)")
+    page.wait_for_timeout(1200)
+    check("Wake: nach Hintergrund-Vorlesen wieder zuhören", page.evaluate("__stt.active") is not None and page.evaluate("__stt.starts") == 3)
+    # Mikrofon-Knopf: eigene Erkennung, Wake-Word ruht; Startton bleibt hörbar
+    safe(page.click, "#btn-mic", timeout=3000)
+    page.wait_for_timeout(400)
+    mic = page.evaluate("({ starts: __stt.starts, mute: __stt.mute, overlaps: __stt.overlaps })")
+    check("Mikrofon-Knopf: nutzt dieselbe Erkennung ohne Überlappen, Startton nicht unterdrückt",
+          mic["starts"] == 4 and mic["mute"][-1] is False and mic["overlaps"] == 0)
+    check("Wake: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    print("INFO Wake-Starts:", [round(t) for t in st["times"]], "Sprechende:", [round(t) for t in st["ends"]])
+    b.close()
+
+    # 4) Stille und Fehler: Pausen wachsen statt Dauer-Neustart (früher alle ~0,35 s ein neuer Start/Ton)
+    b, page, logs, errs, started = run(pw, bridge_ms=10, file_ms=0, wake=True, sttMode="silence", segMs=300)
+    page.wait_for_timeout(500)
+    s0 = page.evaluate("__stt.starts")
+    page.wait_for_timeout(8000)
+    s1 = page.evaluate("__stt.starts")
+    check(f"Stille: wenige Neustarts in 8 s ({s1 - s0}, erwartet ≤ 6)", 1 <= s1 - s0 <= 6)
+    check("Stille: nie zwei Erkennungen gleichzeitig", page.evaluate("__stt.overlaps") == 0)
+    page.evaluate("__stt.mode = 'busy'")
+    page.wait_for_timeout(4000)
+    s2 = page.evaluate("__stt.starts")
+    page.wait_for_timeout(8000)
+    s3 = page.evaluate("__stt.starts")
+    check(f"Fehler: exponentielles Warten ({s3 - s2} Starts in 8 s, erwartet ≤ 2)", s3 - s2 <= 2)
+    check("Fehler: keine JS-Fehler", not errs)
+    errors.extend(errs)
     b.close()
 
 httpd.shutdown()

@@ -48,7 +48,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 
+import com.jarvis.assistant.briefing.BackgroundSpeech;
 import com.jarvis.assistant.briefing.BriefingLaunch;
+import com.jarvis.assistant.stt.BeepMuter;
+import com.jarvis.assistant.stt.NativeRecognizer;
 import com.jarvis.assistant.briefing.BriefingNotifier;
 import com.jarvis.assistant.briefing.BriefingScheduler;
 import com.jarvis.assistant.briefing.BriefingService;
@@ -61,7 +64,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -75,6 +78,10 @@ public class JarvisNativePlugin extends Plugin {
     private String torchCameraId = null;
     private SharedPreferences securePrefs;
     private UpdateEvents.Listener updateListener;
+    private NativeRecognizer recognizer;
+    /** Offene speak-Aufrufe nach Äußerungs-ID – speak blockiert den gemeinsamen Plugin-Thread nicht mehr. */
+    private final ConcurrentHashMap<String, PluginCall> pendingSpeak = new ConcurrentHashMap<>();
+    private final android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
 
     @Override
     public void load() {
@@ -100,10 +107,36 @@ public class JarvisNativePlugin extends Plugin {
             try { notifyListeners("briefingLaunch", new JSObject()); } catch (Exception ignored) {}
         });
 
+        // Spracherkennung: eine Instanz, Haupt-Thread, Ereignisse mit Sitzungskennung
+        BeepMuter.restoreLeftovers(ctx);
+        recognizer = new NativeRecognizer(ctx, (session, type, text, code, kind) -> {
+            JSObject o = new JSObject();
+            o.put("session", session);
+            o.put("type", type);
+            if (text != null) o.put("text", text);
+            if (code != 0) o.put("code", code);
+            if (kind != null) o.put("kind", kind);
+            try { notifyListeners("sttEvent", o); } catch (Exception ignored) {}
+        });
+        BackgroundSpeech.setListener(speaking -> {
+            JSObject o = new JSObject();
+            o.put("speaking", speaking);
+            try { notifyListeners("backgroundSpeech", o); } catch (Exception ignored) {}
+        });
+
         tts = new TextToSpeech(ctx, status -> {
             ttsReady.set(status == TextToSpeech.SUCCESS);
             if (ttsReady.get()) {
                 tts.setLanguage(Locale.GERMANY);
+                // Ein Zuhörer für alle Äußerungen: löst den passenden speak-Aufruf auf.
+                // stop()/QUEUE_FLUSH melden nur onStop – auch das beendet den Aufruf.
+                tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                    @Override public void onStart(String utteranceId) {}
+                    @Override public void onDone(String utteranceId) { finishSpeak(utteranceId); }
+                    @Override public void onError(String utteranceId) { finishSpeak(utteranceId); }
+                    @Override public void onError(String utteranceId, int errorCode) { finishSpeak(utteranceId); }
+                    @Override public void onStop(String utteranceId, boolean interrupted) { finishSpeak(utteranceId); }
+                });
             }
         });
     }
@@ -112,6 +145,9 @@ public class JarvisNativePlugin extends Plugin {
     protected void handleOnDestroy() {
         if (updateListener != null) UpdateEvents.remove(updateListener);
         BriefingLaunch.setListener(null);
+        BackgroundSpeech.setListener(null);
+        if (recognizer != null) recognizer.cancel();
+        resolveAllSpeak();
         if (tts != null) {
             tts.stop();
             tts.shutdown();
@@ -203,29 +239,63 @@ public class JarvisNativePlugin extends Plugin {
             }
             tts.setSpeechRate(Math.max(0.5f, Math.min(2f, rate)));
             tts.setPitch(Math.max(0.5f, Math.min(2f, pitch)));
+            // Nicht mehr blockieren: Früher wartete speak hier (Latch) und hielt den GEMEINSAMEN
+            // Plugin-Thread fest – alle anderen Plugin-Aufrufe (z. B. Spracherkennung) stauten sich
+            // und kamen danach gebündelt an. Jetzt löst der Äußerungs-Zuhörer den Aufruf auf.
             String id = UUID.randomUUID().toString();
-            CountDownLatch done = new CountDownLatch(1);
-            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
-                @Override public void onStart(String utteranceId) {}
-                @Override public void onDone(String utteranceId) { done.countDown(); }
-                @Override public void onError(String utteranceId) { done.countDown(); }
-                @Override public void onError(String utteranceId, int errorCode) { done.countDown(); }
-                // stop()/QUEUE_FLUSH melden nur onStop – ohne das wartete speak bis zu 120 s
-                // und blockierte den gemeinsamen Plugin-Thread (auch stopSpeaking).
-                @Override public void onStop(String utteranceId, boolean interrupted) { done.countDown(); }
-            });
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
-            done.await(120, TimeUnit.SECONDS);
-            call.resolve();
+            call.setKeepAlive(true);
+            pendingSpeak.put(id, call);
+            mainHandler.postDelayed(() -> finishSpeak(id), 120000); // Sicherheitsnetz
+            int r = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
+            if (r != TextToSpeech.SUCCESS) finishSpeak(id);
         } catch (Exception e) {
             call.reject(e.getMessage());
         }
     }
 
+    private void finishSpeak(String id) {
+        PluginCall c = id == null ? null : pendingSpeak.remove(id);
+        if (c == null) return;
+        c.setKeepAlive(false);
+        try { c.resolve(); } catch (Exception ignored) {}
+        try { bridge.releaseCall(c); } catch (Exception ignored) {}
+    }
+
+    private void resolveAllSpeak() {
+        for (String id : new ArrayList<>(pendingSpeak.keySet())) finishSpeak(id);
+    }
+
     @PluginMethod
     public void stopSpeaking(PluginCall call) {
         if (tts != null) tts.stop();
+        resolveAllSpeak(); // falls die Engine kein onStop meldet
         call.resolve();
+    }
+
+    // ---------- Spracherkennung (eine Instanz, siehe stt/NativeRecognizer) ----------
+    @PluginMethod
+    public void sttStart(PluginCall call) {
+        String session = call.getString("session", "");
+        if (session == null || session.isEmpty() || session.length() > 64) { call.reject("session fehlt"); return; }
+        if (!recognizer.available()) { call.reject("unavailable"); return; }
+        if (!recognizer.hasPermission()) { call.reject("not-allowed"); return; }
+        boolean partial = !Boolean.FALSE.equals(call.getBoolean("partial", true));
+        boolean mute = Boolean.TRUE.equals(call.getBoolean("muteBeep", false)) && !BackgroundSpeech.isSpeaking();
+        recognizer.start(session, call.getString("language", "de-DE"), partial, mute);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void sttCancel(PluginCall call) {
+        if (recognizer != null) recognizer.cancel();
+        call.resolve();
+    }
+
+    @Override
+    protected void handleOnPause() {
+        // App im Hintergrund: Mikrofon freigeben, Stummschaltung sicher aufheben
+        if (recognizer != null) recognizer.cancel();
+        super.handleOnPause();
     }
 
     private boolean awaitTts() {

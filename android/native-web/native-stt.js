@@ -1,155 +1,141 @@
 /**
- * Native Spracherkennung (Android SpeechRecognizer) –
- * ohne Chrome-Systempiepen beim Neustart.
+ * Native Spracherkennung (Android SpeechRecognizer über JarvisNative.stt*).
+ *
+ * Eine einzige Erkennung gehört der App (JarvisNative): jeder Start beendet die vorige
+ * sauber auf dem Haupt-Thread, alte Rückmeldungen werden über die Sitzungsnummer verworfen.
+ * Das Wake-Word läuft über die Zustandsmaschine js/core/listen-loop.js (Pausen nach Stille,
+ * exponentielles Warten nach Fehlern, Abbruch mit Hinweis nach wiederholten Fehlern).
+ * Die Erlaubnis fürs Mikrofon fragt weiterhin das SpeechRecognition-Plugin ab.
  */
+import { createListenLoop } from '../js/core/listen-loop.js';
+
 const SR = () => globalThis.Capacitor?.Plugins?.SpeechRecognition;
+const J = () => globalThis.Capacitor?.Plugins?.JarvisNative;
 const STT_ERRORS = {
   'not-allowed': 'Mikrofon-Zugriff verweigert. Bitte in den App-Einstellungen erlauben.',
   denied: 'Mikrofon-Zugriff verweigert. Bitte in den App-Einstellungen erlauben.',
-  unavailable: 'Spracherkennung ist auf diesem Gerät nicht verfügbar.'
+  unavailable: 'Spracherkennung ist auf diesem Gerät nicht verfügbar.',
+  language: 'Die Spracherkennung unterstützt Deutsch auf diesem Gerät gerade nicht (Sprachpaket fehlt?).'
 };
 
-export function createNativeSTT({ lang = 'de-DE' } = {}) {
-  let active = false;
-  let handle = null;
+/** Eine native Erkennung mit Ereignis-Weiterleitung nach Sitzungsnummer. */
+export function createNativeEngine({ lang = 'de-DE', getMuteBeep = () => false, prefix = 'w' } = {}) {
+  let seq = 0;
+  let current = null;           // { id, h }
+  let listenerP = null;
+
+  const ensureListener = () => {
+    if (!listenerP) {
+      listenerP = Promise.resolve(J()?.addListener?.('sttEvent', (ev) => {
+        const c = current;
+        if (!c || !ev || ev.session !== c.id) return; // veraltete Sitzung
+        const h = c.h;
+        switch (ev.type) {
+          case 'ready': h.onReady?.(); break;
+          case 'partial': h.onPartial?.(ev.text || ''); break;
+          case 'final': current = null; h.onFinal?.(ev.text || ''); break;
+          case 'error':
+            current = null;
+            if (ev.kind === 'silence') h.onEnd?.({ reason: 'silence', code: ev.code });
+            else h.onEnd?.({ reason: 'error', kind: ev.kind || 'retry', code: ev.code, message: ev.kind === 'fatal' ? fatalMessage(ev) : undefined });
+            break;
+          default: break;
+        }
+      })).catch(() => null);
+    }
+    return listenerP;
+  };
 
   return {
-    isSupported: () => Boolean(SR()),
+    async start(h) {
+      const plugin = J();
+      if (!plugin?.sttStart) { const e = new Error(STT_ERRORS.unavailable); e.kind = 'fatal'; throw e; }
+      await ensureListener();
+      const id = `${prefix}${Date.now().toString(36)}-${++seq}`;
+      current = { id, h };
+      try {
+        await plugin.sttStart({ session: id, language: lang, partial: true, muteBeep: Boolean(getMuteBeep()) });
+      } catch (e) {
+        if (current?.id === id) current = null;
+        const msg = String(e?.message || e);
+        const err = new Error(STT_ERRORS[msg] || msg);
+        err.kind = msg === 'not-allowed' || msg === 'unavailable' ? 'fatal' : 'retry';
+        throw err;
+      }
+    },
+    cancel() {
+      current = null;
+      try { J()?.sttCancel?.().catch?.(() => {}); } catch { /* egal */ }
+    }
+  };
+}
+
+function fatalMessage(ev) {
+  if (ev.code === 9) return STT_ERRORS['not-allowed'];
+  if (ev.code === 12 || ev.code === 13) return STT_ERRORS.language;
+  return STT_ERRORS.unavailable;
+}
+
+export function createNativeSTT({ lang = 'de-DE', getMuteBeep = () => true } = {}) {
+  const wakeEngine = createNativeEngine({ lang, getMuteBeep, prefix: 'w' });
+  const onceEngine = createNativeEngine({ lang, prefix: 'o' }); // Mikrofon-Knopf: Startton bleibt hörbar
+  let onceAbort = null;
+
+  async function ensurePermission() {
+    try {
+      const r = await SR()?.requestPermissions?.();
+      if (r && r.speechRecognition === 'denied') throw new Error('not-allowed');
+    } catch (e) {
+      if (e?.message === 'not-allowed') throw new Error(STT_ERRORS['not-allowed']);
+    }
+  }
+
+  return {
+    isSupported: () => Boolean(J()?.sttStart),
 
     async listenOnce({ onInterim } = {}) {
-      if (!SR()) throw new Error(STT_ERRORS.unavailable);
-      await SR().requestPermissions?.();
-      const avail = await SR().available?.();
-      if (avail && avail.available === false) throw new Error(STT_ERRORS.unavailable);
-
-      return new Promise(async (resolve, reject) => {
-        let finalText = '';
+      if (!J()?.sttStart) throw new Error(STT_ERRORS.unavailable);
+      await ensurePermission();
+      return new Promise((resolve, reject) => {
         let last = '';
-        const partial = await SR().addListener('partialResults', (data) => {
-          const t = (data.matches && data.matches[0]) || '';
-          if (t) { last = t; onInterim?.(t); }
-        });
-        const stateLis = await SR().addListener?.('listeningState', () => {});
-        try {
-          active = true;
-          await SR().start({
-            language: lang,
-            maxResults: 3,
-            prompt: 'Jarvis hört zu',
-            partialResults: true,
-            popup: false
-          });
-          // Warte auf Ende: Plugin feuert oft partial; wir poll isListening
-          const started = Date.now();
-          const tick = async () => {
-            try {
-              const { listening } = await SR().isListening?.() || { listening: false };
-              if (!listening && Date.now() - started > 600) {
-                cleanup();
-                resolve((finalText || last).trim());
-                return;
-              }
-            } catch { /* weiter */ }
-            if (Date.now() - started > 12000) {
-              try { await SR().stop(); } catch { /* */ }
-              cleanup();
-              resolve((finalText || last).trim());
-              return;
-            }
-            setTimeout(tick, 250);
-          };
-          const cleanup = () => {
-            active = false;
-            partial?.remove?.();
-            stateLis?.remove?.();
-          };
-          // Manche Builds liefern das Ergebnis über partialResults als final beim Stop
-          setTimeout(tick, 400);
-        } catch (e) {
-          active = false;
-          partial?.remove?.();
-          reject(new Error(STT_ERRORS[e?.message] || e.message || String(e)));
-        }
+        let done = false;
+        const finish = (fn) => { if (done) return; done = true; clearTimeout(t); onceAbort = null; fn(); };
+        const t = setTimeout(() => { onceEngine.cancel(); finish(() => resolve(last.trim())); }, 12000);
+        onceAbort = () => { onceEngine.cancel(); finish(() => resolve(last.trim())); };
+        onceEngine.start({
+          onPartial: (x) => { if (x) { last = x; onInterim?.(x); } },
+          onFinal: (x) => finish(() => resolve(String(x || last).trim())),
+          onEnd: (info) => finish(() => (info.reason === 'silence' || !info.kind || info.kind !== 'fatal'
+            ? resolve(last.trim())
+            : reject(new Error(info.message || STT_ERRORS.unavailable))))
+        }).catch((e) => finish(() => reject(e)));
       });
     },
 
     startContinuous({ onFinal, onInterim, onState, onError }) {
-      if (!SR()) { onError?.(new Error(STT_ERRORS.unavailable)); return { stop() {} }; }
+      if (!J()?.sttStart) { onError?.(new Error(STT_ERRORS.unavailable)); return { stop() {} }; }
       let stopped = false;
-      let partialLis;
-      let restartTimer;
-
-      const loop = async () => {
-        if (stopped) return;
-        try {
-          await SR().requestPermissions?.();
-          partialLis?.remove?.();
-          partialLis = await SR().addListener('partialResults', (data) => {
-            const t = (data.matches && data.matches[0]) || '';
-            if (t) onInterim?.(t);
-          });
-          onState?.('listening');
-          await SR().start({
-            language: lang,
-            maxResults: 3,
-            partialResults: true,
-            popup: false
-          });
-          // Segment: warte bis Stille / stop, dann Final + Neustart
-          const waitEnd = async () => {
-            const t0 = Date.now();
-            let lastSpeech = Date.now();
-            let buf = '';
-            const iv = setInterval(async () => {
-              if (stopped) { clearInterval(iv); return; }
-              try {
-                const { listening } = await SR().isListening?.() || { listening: true };
-                if (!listening) {
-                  clearInterval(iv);
-                  const text = buf.trim();
-                  if (text) onFinal?.(text);
-                  onState?.('restarting');
-                  restartTimer = setTimeout(loop, 350);
-                }
-              } catch {
-                clearInterval(iv);
-                restartTimer = setTimeout(loop, 800);
-              }
-              if (Date.now() - t0 > 15000) {
-                clearInterval(iv);
-                try { await SR().stop(); } catch { /* */ }
-              }
-            }, 300);
-            // partial → buf
-            partialLis?.remove?.();
-            partialLis = await SR().addListener('partialResults', (data) => {
-              const t = (data.matches && data.matches[0]) || '';
-              if (t) { buf = t; lastSpeech = Date.now(); onInterim?.(t); }
-            });
-          };
-          await waitEnd();
-        } catch (e) {
-          if (stopped) return;
-          onError?.(new Error(e.message || String(e)));
-          restartTimer = setTimeout(loop, 1500);
-        }
-      };
-
-      SR().requestPermissions?.().then(loop).catch((e) => onError?.(e));
-
+      const loop = createListenLoop({
+        engine: wakeEngine,
+        onFinal, onInterim,
+        onState: (s) => { if (s === 'listening') onState?.('listening'); else if (s === 'waiting') onState?.('restarting'); },
+        onFatal: (e) => { if (!stopped) onError?.(e); }
+      });
+      ensurePermission().then(() => { if (!stopped) loop.start(); }, (e) => { if (!stopped) onError?.(e); });
       return {
+        get state() { return loop.state; },
         stop() {
+          if (stopped) return;
           stopped = true;
-          clearTimeout(restartTimer);
-          partialLis?.remove?.();
-          SR().stop?.().catch(() => {});
+          loop.stop();
           onState?.('stopped');
         }
       };
     },
 
     abort() {
-      try { SR()?.stop?.(); } catch { /* */ }
+      if (onceAbort) onceAbort();
+      else onceEngine.cancel();
     }
   };
 }
