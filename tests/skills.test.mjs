@@ -41,13 +41,15 @@ test('Timer stellen, abfragen, stoppen', () => {
   assert.equal(c.timers.list().length, 0);
 });
 
-test('Notizen merken, abfragen, löschen', () => {
+test('Notizen anlegen, abfragen, löschen („Merk dir“ ist seit v0.8 Gedächtnis)', () => {
   const c = ctx();
-  assert.match(handleSkill('Merke dir, dass der Schlüssel unter der Matte liegt.', c), /Schlüssel unter der Matte liegt/);
-  handleSkill('merk dir Milch kaufen', c);
-  assert.match(handleSkill('Was habe ich mir gemerkt?', c), /2 Dinge.*Matte.*Milch kaufen/);
+  assert.match(handleSkill('Notiere, dass der Schlüssel unter der Matte liegt.', c), /Schlüssel unter der Matte liegt/);
+  handleSkill('Schreib auf: Milch kaufen', c);
+  handleSkill('schreib mir Brot auf', c);
+  assert.match(handleSkill('Meine Notizen', c), /3 Notizen.*Matte.*Milch kaufen.*Brot/);
+  assert.equal(handleSkill('Merke dir, dass ich Tee mag', c), null, 'Merk dir → Gedächtnis, nicht Notiz');
   assert.match(handleSkill('Lösche alle Notizen', c), /Erledigt/);
-  assert.match(handleSkill('Was habe ich mir gemerkt?', c), /nichts/);
+  assert.match(handleSkill('Meine Notizen', c), /keine Notizen/);
 });
 
 test('Unbekanntes geht an die KI (null)', () => {

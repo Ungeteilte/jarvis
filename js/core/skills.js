@@ -93,8 +93,10 @@ export function handleSkill(text, ctx) {
   const name = ctx.name || 'Jarvis';
 
   // --- Notizen ---
-  const remember = raw.match(/^(?:bitte\s+)?(?:merke?|merk)\s+dir(?:\s+bitte)?[,:]?\s+(?:dass\s+)?(.+)$/i)
-    || raw.match(/^(?:notiere|notier)(?:\s+bitte)?[,:]?\s+(.+)$/i);
+  // „Merk dir …“ gehört seit v0.8 zum Gedächtnis (memory-commands.js); Notizen: „Notiere …“, „Schreib auf …“
+  const remember = raw.match(/^(?:bitte\s+)?(?:notiere|notier)(?:\s+(?:bitte|mir))?[,:]?\s+(.+)$/i)
+    || raw.match(/^(?:bitte\s+)?schreib(?:e)?\s+(?:mir\s+|dir\s+)?(?:bitte\s+)?auf[,:]?\s+(.+)$/i)
+    || raw.match(/^(?:bitte\s+)?schreib(?:e)?\s+(?:mir\s+|dir\s+)?(.+?)\s+auf$/i);
   if (remember) {
     const note = remember[1].replace(/[.!]+$/, '').trim();
     const notes = loadNotes(ctx.store);
@@ -102,15 +104,15 @@ export function handleSkill(text, ctx) {
     ctx.store.set(NOTES_KEY, notes);
     return `Sehr wohl, ich habe mir notiert: ${note}.`;
   }
-  if (/(was|welche).*(hab|habe|hast).*(ich|du).*(gemerkt|notiert)|meine notizen|zeig.*notizen|was weisst du (ueber mich|noch)/.test(t)) {
+  if (/(was|welche).*(hab|habe|hast).*(ich|du).*notiert|meine notizen|zeig.*notizen|welche notizen/.test(t)) {
     const notes = loadNotes(ctx.store);
-    if (!notes.length) return 'Ich habe mir bisher nichts gemerkt.';
-    return `Sie haben mir ${notes.length === 1 ? 'eine Sache' : notes.length + ' Dinge'} anvertraut: ` +
+    if (!notes.length) return 'Es gibt keine Notizen.';
+    return `Sie haben ${notes.length === 1 ? 'eine Notiz' : notes.length + ' Notizen'}: ` +
       notes.map((n) => n.text).join('; ') + '.';
   }
-  if (/(loesch|vergiss).*(notizen|alles was|alles)/.test(t)) {
+  if (/(loesch|vergiss).*notizen/.test(t)) {
     ctx.store.set(NOTES_KEY, []);
-    return 'Erledigt. Mein Gedächtnis ist wieder blütenweiß.';
+    return 'Erledigt. Alle Notizen sind gelöscht.';
   }
 
   // --- Timer ---

@@ -81,6 +81,8 @@ export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, f
       const args = parseArgs(tc.function?.arguments ?? tc.arguments);
       emit?.({ type: 'tool', name, args });
       const result = await registry.run(name, args, { ...ctx, registry });
+      // Fremde Daten (Nachrichten, Termine, Wetter) im Kontext → Gedächtnis-Vorschläge in dieser Runde gesperrt
+      if (ctx?.turn && registry.get(name)?.externalData) ctx.turn.external = true;
       toolResults.push({ name, args, result });
       emit?.({ type: 'tool-result', name, ok: result?.ok !== false, needsConfirm: Boolean(result?.needsConfirm) });
       messages.push({
