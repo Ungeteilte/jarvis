@@ -535,10 +535,17 @@ const BASE_TOOLS = [
         };
       }
       const r = await ctx.device.setSystemAlarm({ hour: c.hour, minute: c.minute, message: msg });
+      if (r?.ok && r.opened) {
+        // Ersatzweg (Uhr-App erlaubt kein Stellen im Hintergrund): ehrlich sagen, dass noch ein Tipp fehlt.
+        return { ok: true, alarm: c, opened: true,
+          message: `Die Uhr-App lässt mich den Wecker nicht direkt stellen. Ich habe sie mit ${spoken} geöffnet – bitte tippen Sie dort auf „Speichern“.` };
+      }
       if (r?.ok) return { ok: true, alarm: c, message: `Sehr wohl, der Wecker ist auf ${spoken} gestellt.` };
+      // Grund ohne Klammern anhängen (Klammern/Schlusspunkt aus der Gerätemeldung entfernt).
+      const reason = String(r?.message || '').replace(/[()]/g, '').replace(/[.\s]+$/, '').trim();
       return {
         ok: false,
-        message: `Den Wecker für ${spoken} konnte ich leider nicht stellen${r?.message ? ` (${String(r.message).replace(/[.\s]+$/, '')})` : ''}. ` +
+        message: `Den Wecker für ${spoken} konnte ich leider nicht stellen${reason ? `: ${reason}` : ''}. ` +
           'Bitte stellen Sie ihn direkt in der Uhr-App.'
       };
     }

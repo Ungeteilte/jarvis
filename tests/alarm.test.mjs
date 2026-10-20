@@ -11,12 +11,12 @@ import { saveSettings } from '../js/core/settings.js';
 import { createToolRegistry } from '../js/core/tools/registry.js';
 import { TOOL_DEFINITIONS, alarmSpoken } from '../js/core/tools/definitions.js';
 
-function setup({ fail = false, fetchFn, registry, nowRef = { t: new Date('2026-10-20T19:00:00Z') } } = {}) {
+function setup({ fail = false, opened = false, fetchFn, registry, nowRef = { t: new Date('2026-10-20T19:00:00Z') } } = {}) {
   const store = createStore(createMemoryAdapter());
   const timers = createTimerManager({ store, onDone: () => {}, schedule: () => 0, unschedule: () => {} });
   const calls = [];
   const device = {
-    setSystemAlarm: async (a) => { calls.push(a); return fail ? { ok: false, message: 'Keine Uhr-App gefunden, die Wecker annimmt.' } : { ok: true }; }
+    setSystemAlarm: async (a) => { calls.push(a); return fail ? { ok: false, message: typeof fail === 'string' ? fail : 'Keine Uhr-App gefunden, die Wecker annimmt.' } : opened ? { ok: true, opened: true } : { ok: true }; }
   };
   const wrapped = fetchFn && (async (url, init) => (/\/models$/.test(url) ? { ok: true, status: 200, json: async () => ({ data: [] }) } : fetchFn(url, init)));
   const a = createAssistant({ store, timers, device, fetchFn: wrapped, registry, now: () => nowRef.t, stream: false });
@@ -82,7 +82,22 @@ test('Fehler beim Stellen: klare Ansage statt Stille', async () => {
   const r = await a.process('Stell einen Wecker auf 6 Uhr');
   assert.equal(calls.length, 1);
   assert.equal(r.error, true);
-  assert.match(r.text, /konnte ich leider nicht stellen \(Keine Uhr-App gefunden, die Wecker annimmt\)\. Bitte stellen Sie ihn direkt in der Uhr-App/);
+  assert.match(r.text, /konnte ich leider nicht stellen: Keine Uhr-App gefunden, die Wecker annimmt\. Bitte stellen Sie ihn direkt in der Uhr-App/);
+  // v0.8-Gerätetest: Meldung mit Klammern ergab „((…))“ – jetzt nie verschachtelte Klammern
+  const b = setup({ fail: 'Die Uhr-App hat den Wecker abgelehnt (fehlende Berechtigung).' });
+  const t = await b.a.process('stell mir einen Wecker für 4 Uhr morgens');
+  assert.deepEqual(b.calls, [{ hour: 4, minute: 0, message: 'Jarvis Wecker' }]);
+  assert.doesNotMatch(t.text, /[()]/);
+  assert.match(t.text, /^Den Wecker für 4 Uhr konnte ich leider nicht stellen: Die Uhr-App hat den Wecker abgelehnt fehlende Berechtigung\. Bitte/);
+});
+
+test('Ersatzweg: Uhr-App mit vorausgefüllter Zeit geöffnet → ehrlich „bitte Speichern tippen“, kein Fehler', async () => {
+  const { a, calls } = setup({ opened: true });
+  const r = await a.process('stell mir einen Wecker für 4 Uhr morgens');
+  assert.deepEqual(calls, [{ hour: 4, minute: 0, message: 'Jarvis Wecker' }]);
+  assert.equal(r.error, undefined);
+  assert.match(r.text, /mit 4 Uhr geöffnet – bitte tippen Sie dort auf „Speichern“/);
+  assert.doesNotMatch(r.text, /ist auf 4 Uhr gestellt/, 'nicht behaupten, er sei schon gestellt');
 });
 
 test('KI stellt Wecker direkt; nach fremden Daten nur mit Ja-Karte', async () => {
@@ -113,11 +128,24 @@ test('Android: Wecker im Hintergrund (SKIP_UI=true), Uhrzeit Pflicht, <queries> 
     '../android/native-android/java/com/jarvis/assistant/JarvisNativePlugin.java']) {
     const s = read(p);
     const body = s.slice(s.indexOf('public void setAlarm('), s.indexOf('public void setTimer('));
-    assert.match(body, /putExtra\(AlarmClock\.EXTRA_SKIP_UI, true\)/, p);
+    assert.match(body, /Intent i = alarmIntent\(spec, true\);/, p + ': normaler Weg im Hintergrund');
+    assert.match(body, /putExtra\(AlarmClock\.EXTRA_SKIP_UI, skipUi\)/, p);
     assert.doesNotMatch(body, /EXTRA_SKIP_UI, false/, p);
     assert.doesNotMatch(body, /getInt\("hour", 7\)/, p + ': kein stiller Standard 7:00');
     assert.match(body, /resolveActivity/, p);
     assert.match(body, /AlarmSpec\.of\(/, p);
   }
-  assert.match(read('../android/android/app/src/main/AndroidManifest.xml'), /<action android:name="android\.intent\.action\.SET_ALARM" \/>/);
+  const man = read('../android/android/app/src/main/AndroidManifest.xml');
+  assert.match(man, /<action android:name="android\.intent\.action\.SET_ALARM" \/>/);
+  // v0.8-Gerätefehler: „android.permission.SET_ALARM“ gibt es nicht → SecurityException in der Uhr-App
+  assert.match(man, /<uses-permission android:name="com\.android\.alarm\.permission\.SET_ALARM" \/>/);
+  assert.doesNotMatch(man, /"android\.permission\.SET_ALARM"/);
+  for (const p of ['../android/android/app/src/main/java/com/jarvis/assistant/JarvisNativePlugin.java',
+    '../android/native-android/java/com/jarvis/assistant/JarvisNativePlugin.java']) {
+    const s = read(p);
+    assert.match(s, /alarmIntent\(spec, false\)/, p + ': Ersatzweg mit SKIP_UI=false');
+    assert.match(s, /ret\.put\("opened", true\)/, p);
+    assert.doesNotMatch(s.slice(s.indexOf('public void setAlarm('), s.indexOf('public void setTimer(')), /reject\("[^"]*\(/, p + ': keine Klammern in Meldungen');
+  }
+  assert.match(read('../tools/release-android.sh'), /com\.android\.alarm\.permission\.SET_ALARM/, 'Release prüft die Berechtigung im APK');
 });

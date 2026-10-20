@@ -71,7 +71,10 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.SET_ALARM" />
+    <!-- Wecker/Timer in der Uhr-App: Die Uhr-App schützt ACTION_SET_ALARM/SET_TIMER mit
+         com.android.alarm.permission.SET_ALARM. Bis v0.8 stand hier fälschlich
+         „android.permission.SET_ALARM“ (gibt es nicht) → SecurityException auf dem Samsung A55. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Morgen-Briefing -->

@@ -151,7 +151,10 @@ export function createNativeDevice() {
     },
     async setSystemAlarm({ hour, minute, message }) {
       try {
-        await J().setAlarm({ hour, minute, message: message || 'Jarvis Wecker' });
+        const r = await J().setAlarm({ hour, minute, message: message || 'Jarvis Wecker' });
+        // opened=true: Uhr-App hat das Stellen im Hintergrund abgelehnt und wurde mit vorausgefüllter Zeit
+        // geöffnet – der Wecker gilt erst, wenn der Nutzer dort „Speichern“ tippt.
+        if (r && r.opened) return { ok: true, opened: true, message: 'Uhr-App mit vorausgefüllter Zeit geöffnet.' };
         return { ok: true, message: 'Wecker in der Uhr-App gesetzt.' };
       } catch (e) {
         return { ok: false, message: e.message };

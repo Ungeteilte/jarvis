@@ -21,6 +21,7 @@ import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.provider.AlarmClock;
 import android.provider.Settings;
+import android.util.Log;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
@@ -437,7 +438,9 @@ public class JarvisNativePlugin extends Plugin {
 
     /**
      * Wecker in der Uhr-App stellen – im Hintergrund (EXTRA_SKIP_UI=true), damit Jarvis offen bleibt.
-     * Fehler werden mit klarer Meldung abgelehnt (JS sagt sie an), nie still verschluckt.
+     * Lehnt die Uhr-App das ab (z. B. SecurityException), öffnet Jarvis sie ersatzweise mit vorausgefüllter
+     * Uhrzeit (SKIP_UI=false) und meldet {opened:true}; JS sagt dann ehrlich „bitte auf Speichern tippen“.
+     * Fehler werden mit klarer Meldung (ohne Klammern) abgelehnt, nie still verschluckt.
      */
     @PluginMethod
     public void setAlarm(PluginCall call) {
@@ -448,31 +451,49 @@ public class JarvisNativePlugin extends Plugin {
             call.reject(e.getMessage());
             return;
         }
-        Intent i = new Intent(AlarmClock.ACTION_SET_ALARM);
-        i.putExtra(AlarmClock.EXTRA_HOUR, spec.hour);
-        i.putExtra(AlarmClock.EXTRA_MINUTES, spec.minute);
-        i.putExtra(AlarmClock.EXTRA_MESSAGE, spec.message);
-        i.putExtra(AlarmClock.EXTRA_SKIP_UI, true);
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent i = alarmIntent(spec, true);
         // Android 11+: braucht <queries> für SET_ALARM im Manifest, sonst ist die Uhr-App hier unsichtbar
         if (i.resolveActivity(getContext().getPackageManager()) == null) {
             call.reject("Keine Uhr-App gefunden, die Wecker annimmt.");
             return;
         }
+        JSObject ret = new JSObject();
+        ret.put("hour", spec.hour);
+        ret.put("minute", spec.minute);
         try {
             getContext().startActivity(i);
-            JSObject ret = new JSObject();
             ret.put("ok", true);
-            ret.put("hour", spec.hour);
-            ret.put("minute", spec.minute);
+            ret.put("opened", false);
             call.resolve(ret);
+            return;
         } catch (ActivityNotFoundException e) {
             call.reject("Keine Uhr-App gefunden.");
-        } catch (SecurityException e) {
-            call.reject("Die Uhr-App hat den Wecker abgelehnt (fehlende Berechtigung).");
+            return;
         } catch (Exception e) {
-            call.reject("Wecker konnte nicht gestellt werden.");
+            // SecurityException o. Ä.: Ersatzweg unten
+            Log.w("JarvisNative", "Wecker im Hintergrund abgelehnt: " + e.getClass().getSimpleName());
         }
+        try {
+            getContext().startActivity(alarmIntent(spec, false));
+            ret.put("ok", true);
+            ret.put("opened", true);
+            call.resolve(ret);
+        } catch (SecurityException e) {
+            call.reject("Die Uhr-App erlaubt Jarvis keinen Wecker, auch nicht zum Bestätigen");
+        } catch (Exception e) {
+            call.reject("Die Uhr-App ließ sich nicht öffnen");
+        }
+    }
+
+    /** ACTION_SET_ALARM mit Uhrzeit, Beschriftung und SKIP_UI (true = im Hintergrund, false = Uhr-App zeigen). */
+    private static Intent alarmIntent(AlarmSpec spec, boolean skipUi) {
+        Intent i = new Intent(AlarmClock.ACTION_SET_ALARM);
+        i.putExtra(AlarmClock.EXTRA_HOUR, spec.hour);
+        i.putExtra(AlarmClock.EXTRA_MINUTES, spec.minute);
+        i.putExtra(AlarmClock.EXTRA_MESSAGE, spec.message);
+        i.putExtra(AlarmClock.EXTRA_SKIP_UI, skipUi);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        return i;
     }
 
     @PluginMethod
@@ -489,6 +510,8 @@ public class JarvisNativePlugin extends Plugin {
             call.resolve();
         } catch (ActivityNotFoundException e) {
             call.reject("Keine Timer-App gefunden.");
+        } catch (SecurityException e) {
+            call.reject("Die Uhr-App hat den Timer abgelehnt");
         }
     }
 

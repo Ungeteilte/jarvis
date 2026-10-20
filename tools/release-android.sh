@@ -108,6 +108,9 @@ echo "$APK_LINEAGE" | grep -E "Signer #[0-9] in lineage certificate (DN|SHA-256)
 echo "$APK_LINEAGE" | grep -q "Signer #1 in lineage certificate SHA-256 digest: $OLD_CERT" &&
 echo "$APK_LINEAGE" | grep -q "Signer #2 in lineage certificate SHA-256 digest: $NEW_CERT" || { echo "Lineage im APK unvollständig" >&2; exit 1; }
 
+# Wecker: Uhr-Apps verlangen com.android.alarm.permission.SET_ALARM (v0.8 hatte den falschen Namen → SecurityException)
+"$AAPT" dump permissions "$WORK/Jarvis.apk" | grep -q "name='com.android.alarm.permission.SET_ALARM'" \
+  || { echo "APK ohne com.android.alarm.permission.SET_ALARM – Wecker würde abgelehnt" >&2; exit 1; }
 BADGE="$("$AAPT" dump badging "$WORK/Jarvis.apk" | awk 'NR==1')"
 echo "$BADGE" | grep -q "name='com.jarvis.assistant' versionCode='$NEW_CODE' versionName='$NAME'" || { echo "Badging passt nicht: $BADGE" >&2; exit 1; }
 SHA=$(sha256sum "$WORK/Jarvis.apk" | awk '{print $1}')

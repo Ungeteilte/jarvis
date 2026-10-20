@@ -10,6 +10,11 @@ import java.util.Map;
  * öffnete dann ihren Bearbeiten-Bildschirm im Vordergrund (Jarvis „verschwand“), und gespeichert wurde
  * nur, wenn man dort selbst auf „Speichern“ tippte. Jetzt: SKIP_UI=true (Wecker wird im Hintergrund
  * gestellt), Stunde/Minute sind Pflicht (kein stiller Standard 7:00), Beschriftung wird begrenzt.
+ *
+ * Fehler in v0.8: Im Manifest stand „android.permission.SET_ALARM“ statt der echten Berechtigung
+ * {@link #PERMISSION}; die Uhr-App lehnte den Intent mit SecurityException ab. Lehnt eine Uhr-App das
+ * Stellen im Hintergrund trotzdem ab, öffnet Jarvis sie ersatzweise mit vorausgefüllter Uhrzeit
+ * ({@link #extras(boolean)} mit skipUi=false) und sagt ehrlich, dass dort „Speichern“ nötig ist.
  */
 public final class AlarmSpec {
     // Gleiche Werte wie android.provider.AlarmClock (hier als Text, damit der Test ohne Android läuft).
@@ -19,6 +24,8 @@ public final class AlarmSpec {
     public static final String EXTRA_MINUTES = "android.intent.extra.alarm.MINUTES";
     public static final String EXTRA_MESSAGE = "android.intent.extra.alarm.MESSAGE";
     public static final String EXTRA_SKIP_UI = "android.intent.extra.alarm.SKIP_UI";
+    /** Berechtigung, mit der Uhr-Apps ACTION_SET_ALARM schützen (muss im Manifest stehen). */
+    public static final String PERMISSION = "com.android.alarm.permission.SET_ALARM";
     public static final int MAX_MESSAGE = 60;
     public static final String DEFAULT_MESSAGE = "Jarvis Wecker";
 
@@ -42,13 +49,21 @@ public final class AlarmSpec {
         return new AlarmSpec(hour, minute, m);
     }
 
-    /** Extras für den Intent ACTION_SET_ALARM – SKIP_UI ist immer true (Jarvis bleibt im Vordergrund). */
+    /** Extras für den normalen Weg: SKIP_UI=true, Jarvis bleibt im Vordergrund. */
     public Map<String, Object> extras() {
+        return extras(true);
+    }
+
+    /**
+     * Extras für ACTION_SET_ALARM. skipUi=true: im Hintergrund stellen (normaler Weg).
+     * skipUi=false: Ersatzweg – Uhr-App öffnet sich mit vorausgefüllter Zeit, der Nutzer tippt „Speichern“.
+     */
+    public Map<String, Object> extras(boolean skipUi) {
         Map<String, Object> e = new LinkedHashMap<>();
         e.put(EXTRA_HOUR, hour);
         e.put(EXTRA_MINUTES, minute);
         e.put(EXTRA_MESSAGE, message);
-        e.put(EXTRA_SKIP_UI, Boolean.TRUE);
+        e.put(EXTRA_SKIP_UI, skipUi);
         return e;
     }
 }

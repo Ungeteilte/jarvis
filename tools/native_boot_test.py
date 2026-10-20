@@ -95,7 +95,7 @@ FAKE = r"""
     },
     sttCancel: () => { st.cancels++; st.active = null; return lat({}); },
     openUrl: ({ url }) => { window.__nat.opened.push(url); return lat({}); },
-    setAlarm: (a) => { (window.__nat.alarms = window.__nat.alarms || []).push(a); return CFG.alarmFail ? lat(null).then(() => { throw new Error('Keine Uhr-App gefunden, die Wecker annimmt.'); }) : lat({ ok: true }); },
+    setAlarm: (a) => { (window.__nat.alarms = window.__nat.alarms || []).push(a); return CFG.alarmFail ? lat(null).then(() => { throw new Error('Keine Uhr-App gefunden, die Wecker annimmt.'); }) : lat(CFG.alarmOpened ? { ok: true, opened: true, hour: a.hour, minute: a.minute } : { ok: true, opened: false }); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
@@ -276,7 +276,15 @@ with sync_playwright() as pw:
     b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, alarmFail=True)
     page.wait_for_timeout(400)
     r = nask("Stell einen Wecker auf 6 Uhr")
-    check("Wecker: Fehler der Uhr-App wird klar angesagt", "konnte ich leider nicht stellen" in r and "Keine Uhr-App" in r)
+    check("Wecker: Fehler der Uhr-App wird klar angesagt (ohne Klammern)", "konnte ich leider nicht stellen: Keine Uhr-App" in r and "(" not in r)
+    errors.extend(errs)
+    b.close()
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, alarmOpened=True)
+    page.wait_for_timeout(400)
+    r = nask("stell mir einen Wecker für 4 Uhr morgens")
+    check("Wecker-Ersatzweg: Uhr-App mit 4 Uhr geöffnet, ehrlicher Hinweis auf „Speichern“",
+          page.evaluate("window.__nat.alarms") == [{"hour": 4, "minute": 0, "message": "Jarvis Wecker"}]
+          and "bitte tippen Sie dort auf „Speichern“" in r and "gestellt." not in r)
     errors.extend(errs)
     b.close()
 
