@@ -2,6 +2,7 @@
 import { DEFAULT_BRIEFING, normalizeBriefingConfig } from './briefing/trigger.js';
 import { RESSORT_IDS } from './briefing/news.js';
 import { DEFAULT_EVENING, normalizeEveningConfig } from './briefing/evening-config.js';
+import { DEFAULT_PREFS, normalizePrefs } from './prefs.js';
 
 export const PROVIDERS = Object.freeze({
   xai: {
@@ -48,7 +49,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   wakeWord: false,
   wakeMuteBeep: true, // Android: Startton der Erkennung beim Wake-Word kurz stummschalten
   briefing: DEFAULT_BRIEFING,
-  evening: DEFAULT_EVENING
+  evening: DEFAULT_EVENING,
+  memoryToAI: true, // Gedächtnis-Einträge mit an die KI senden (abschaltbar)
+  prefs: DEFAULT_PREFS
 });
 
 const KEY = 'settings';
@@ -63,7 +66,9 @@ export function loadSettings(store) {
     models: { ...DEFAULT_SETTINGS.models, ...(s.models || {}) },
     briefing: normalizeBriefingConfig(s.briefing, RESSORT_IDS),
     wakeMuteBeep: typeof s.wakeMuteBeep === 'boolean' ? s.wakeMuteBeep : DEFAULT_SETTINGS.wakeMuteBeep,
-    evening: normalizeEveningConfig(s.evening)
+    evening: normalizeEveningConfig(s.evening),
+    memoryToAI: typeof s.memoryToAI === 'boolean' ? s.memoryToAI : DEFAULT_SETTINGS.memoryToAI,
+    prefs: normalizePrefs(s.prefs)
   };
 }
 
