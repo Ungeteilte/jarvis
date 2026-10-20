@@ -62,6 +62,9 @@ FAKE = r"""
     'jarvis.persona': JSON.stringify({ name: 'Jarvis', onboarded: true, voiceId: '' }),
     'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' }, wakeWord: Boolean(CFG.wake) })
   };
+  if (CFG.memory) secure['jarvis.memory'] = JSON.stringify({ version: 1, items: CFG.memory.map((t, i) => ({ id: 'm' + i, text: t, kategorie: 'sonstiges', quelle: 'sprache', erstellt: '2026-10-19T10:00:00.000Z', geaendert: '2026-10-19T10:00:00.000Z' })) });
+  window.__secure = secure;
+  window.__nat.opened = [];
   const rec = (n, v) => () => { window.__nat.calls.push(n); return lat(v); };
   const base = {
     secureGet: ({ key }) => { window.__nat.calls.push('secureGet'); return CFG.hang ? never() : lat({ value: secure[key] ?? null }); },
@@ -91,6 +94,7 @@ FAKE = r"""
       return lat({});
     },
     sttCancel: () => { st.cancels++; st.active = null; return lat({}); },
+    openUrl: ({ url }) => { window.__nat.opened.push(url); return lat({}); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
@@ -233,6 +237,31 @@ with sync_playwright() as pw:
     s3 = page.evaluate("__stt.starts")
     check(f"Fehler: exponentielles Warten ({s3 - s2} Starts in 8 s, erwartet ≤ 2)", s3 - s2 <= 2)
     check("Fehler: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 5) v0.8: Gedächtnis aus dem sicheren Speicher, Merken schreibt verschlüsselt, Website erst nach Ja
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, memory=["Ich streame dienstags um 20 Uhr"])
+    page.wait_for_timeout(400)
+    def nask(text, wait=900):
+        safe(page.fill, "#input", text, timeout=3000)
+        safe(page.click, "#btn-send", timeout=3000)
+        page.wait_for_timeout(wait)
+        return page.locator(".msg.assistant").last.inner_text()
+    r = nask("Was weißt du über mich?")
+    check("Gedächtnis: beim Start aus dem sicheren Speicher geladen", "dienstags um 20 Uhr" in r)
+    nask("Merk dir, dass ich grünen Tee mag")
+    page.wait_for_timeout(300)
+    stored = page.evaluate("window.__secure['jarvis.memory'] || ''")
+    check("Gedächtnis: Merken schreibt in den sicheren Speicher (secureSet)", "Ich mag grünen Tee" in stored and "dienstags" in stored)
+    r = nask("Öffne example.com/seite?x=1")
+    card = page.locator(".confirm-card:not(.confirm-done)").last
+    ctext = card.inner_text() if card.count() else ""
+    check("Website: Karte mit Domain + voller Adresse, vorher kein openUrl",
+          "example.com" in ctext and "https://example.com/seite?x=1" in ctext and page.evaluate("window.__nat.opened") == [])
+    nask("ja")
+    check("Website: nach „Ja“ genau einmal JarvisNative.openUrl", page.evaluate("window.__nat.opened") == ["https://example.com/seite?x=1"])
+    check("Gedächtnis/Website: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

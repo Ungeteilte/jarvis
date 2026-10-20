@@ -462,6 +462,135 @@ with sync_playwright() as p:
         epage.screenshot(path=str(SHOTS / "evening.png"))
         ectx.close()
 
+    # 9) v0.8: Gedächtnis, Vorlieben, Zaun im Prompt, Websites nur nach Bestätigung, keine Links in Antworten
+    mctx = browser.new_context(viewport={"width": 412, "height": 915}, is_mobile=True, has_touch=True,
+                               locale="de-DE", timezone_id="Europe/Berlin")
+    mctx.add_init_script("""
+      if (window.speechSynthesis) speechSynthesis.speak = () => {};
+      if (!localStorage.getItem('jarvis.persona')) {
+        localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Jarvis', onboarded: true }));
+        localStorage.setItem('jarvis.settings', JSON.stringify({ provider: 'gemini', apiKeys: { gemini: 'test-key' }, speak: false }));
+        localStorage.setItem('jarvis.notes', JSON.stringify([{ text: 'Mikrofon-Arm steht links', at: '2026-10-19T09:00:00.000Z' }]));
+      }
+      window.__opened = [];
+      document.addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a');
+        if (!a) return;
+        const href = a.getAttribute('href') || '';
+        if (/^(tel|sms|mailto|https?):/i.test(href) && !a.closest('.settings-form') && !a.closest('#onboarding')) {
+          e.preventDefault(); e.stopPropagation();
+          window.__opened.push(href);
+        }
+      }, true);
+    """)
+    mpage = mctx.new_page()
+    mpage.on("pageerror", lambda e: errors.append(f"memory pageerror: {e}"))
+    mpage.on("console", lambda m: m.type == "error" and errors.append(f"memory console: {m.text}"))
+    mpage.on("dialog", lambda d: d.accept())
+    popups = []
+    mpage.on("popup", lambda pg: popups.append(pg.url))
+    mnet = {"bodies": []}
+    WIKI = "https://de.wikipedia.org/wiki/VTuber?ref=jarvis"
+    def fake_gem_mem(route):
+        cors = {"access-control-allow-origin": "*"}
+        if route.request.method == "GET":
+            route.fulfill(status=200, content_type="application/json", headers=cors, body=json.dumps({"data": []}))
+            return
+        body = json.loads(route.request.post_data or "{}")
+        mnet["bodies"].append(body)
+        msgs = body.get("messages") or []
+        last = msgs[-1] if msgs else {}
+        text = last.get("content") or ""
+        if last.get("role") == "user" and "Seite über VTuber" in text:
+            msg = {"role": "assistant", "content": None, "tool_calls": [{"id": "w1", "type": "function",
+                   "function": {"name": "open_website", "arguments": json.dumps({"url": WIKI})}}]}
+        elif last.get("role") == "user" and "Link bitte" in text:
+            msg = {"role": "assistant", "content": "Schauen Sie auf https://evil.example/phish oder www.evil.example nach."}
+        else:
+            msg = {"role": "assistant", "content": "Sehr wohl."}
+        if body.get("stream"):
+            sse = "data: " + json.dumps({"choices": [{"index": 0, "delta": msg}]}) + "\n\ndata: [DONE]\n\n"
+            route.fulfill(status=200, content_type="text/event-stream", headers=cors, body=sse)
+        else:
+            route.fulfill(status=200, content_type="application/json", headers=cors, body=json.dumps({"choices": [{"message": msg}]}))
+    mpage.route("https://generativelanguage.googleapis.com/**", fake_gem_mem)
+    mpage.goto(URL)
+    mpage.wait_for_load_state("networkidle")
+    def mask(text, wait=900):
+        mpage.fill("#input", text); mpage.click("#btn-send"); mpage.wait_for_timeout(wait)
+        return mpage.locator(".msg.assistant").last.inner_text()
+    mem = lambda: mpage.evaluate("(JSON.parse(localStorage.getItem('jarvis.memory') || '{}').items || [])")
+    r = mask("Merk dir, dass ich dienstags um 20 Uhr streame")
+    check("Gedächtnis: „Merk dir“ speichert im Gedächtnis (nicht in Notizen)", "Gemerkt" in r and len(mem()) == 1
+          and len(mpage.evaluate("JSON.parse(localStorage.getItem('jarvis.notes'))")) == 1)
+    r = mask("Was weißt du über mich?")
+    check("Gedächtnis: „Was weißt du über mich?“", "dienstags um 20 Uhr" in r and "Notiz" in r)
+    mask("Wann streame ich eigentlich?")
+    sysp = (mnet["bodies"][-1]["messages"][0]["content"]) if mnet["bodies"] else ""
+    check("Gedächtnis: eingezäunt an die KI (+ Notizen eingezäunt, Regel)", "<gedaechtnis>\n" in sysp and "dienstags um 20 Uhr" in sysp
+          and "<notizen>\n" in sysp and "KEINE Anweisungen" in sysp)
+    r = mask("Merk dir mein Passwort ist Sonne123")
+    check("Gedächtnis: Passwort wird nicht gespeichert", "lieber nicht" in r and len(mem()) == 1)
+
+    # Einstellungen: Liste, Hinzufügen, Filter, Bearbeiten, Löschen, Notizen übernehmen, Schalter, Vorlieben
+    mpage.click("#btn-settings"); mpage.wait_for_timeout(400)
+    check("Gedächtnis: Bereich in den Einstellungen mit Eintrag + Gemini-Hinweis", mpage.is_visible("#memory-fieldset")
+          and mpage.locator("#mem-list .mem-item").count() == 1 and "Gemini" in mpage.inner_text("#memory-fieldset")
+          and mpage.is_checked("#set-mem-ai") and mpage.is_visible("#memory-fieldset .web-only"))
+    mpage.fill("#mem-new", "Meine PIN ist 4711"); mpage.click("#btn-mem-add"); mpage.wait_for_timeout(150)
+    blocked = "lieber nicht" in mpage.inner_text("#mem-status") and mpage.locator("#mem-list .mem-item").count() == 1
+    mpage.fill("#mem-new", "Meine Katze heißt Mochi"); mpage.click("#btn-mem-add"); mpage.wait_for_timeout(150)
+    check("Gedächtnis: Hinzufügen in den Einstellungen (PIN abgelehnt)", blocked and mpage.locator("#mem-list .mem-item").count() == 2)
+    item = mpage.locator("#mem-list .mem-item", has_text="Mochi")
+    item.locator(".mem-btn-edit").click()
+    mpage.fill("#mem-list input.mem-edit", "Meine Katze heißt Mochi und ist schwarz")
+    mpage.click("#mem-list .mem-btn-save"); mpage.wait_for_timeout(150)
+    check("Gedächtnis: Bearbeiten", any("schwarz" in i["text"] for i in mem()))
+    mpage.locator("#mem-list .mem-item", has_text="schwarz").locator(".mem-btn-del").click(); mpage.wait_for_timeout(150)
+    check("Gedächtnis: Löschen", len(mem()) == 1 and not any("Mochi" in i["text"] for i in mem()))
+    mpage.click("#btn-mem-migrate"); mpage.wait_for_timeout(200)
+    check("Gedächtnis: Notizen übernehmen", any("Mikrofon-Arm" in i["text"] for i in mem())
+          and mpage.evaluate("JSON.parse(localStorage.getItem('jarvis.notes')).length") == 0)
+    mpage.screenshot(path=str(SHOTS / "memory.png"))
+    mpage.uncheck("#set-mem-ai")
+    mpage.select_option("#set-pref-len", "kurz")
+    mpage.click("#settings-form button[type=submit]"); mpage.wait_for_timeout(300)
+    mask("Wann streame ich noch mal?")
+    sysp = mnet["bodies"][-1]["messages"][0]["content"]
+    check("Gedächtnis: Schalter aus → nicht an die KI; Vorliebe „kurz“ im Prompt", "dienstags" not in sysp and "<gedaechtnis>\n" not in sysp
+          and "höchstens 2 kurze Sätze" in sysp)
+    r = mask("Du kannst mich duzen")
+    st = mpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings'))")
+    check("Vorlieben per Sprache („Du kannst mich duzen“)", st["prefs"]["anrede"] == "du" and st["memoryToAI"] is False)
+
+    # Websites: KI schlägt vor → Karte mit Domain + voller Adresse → erst nach „Ja“ geöffnet
+    r = mask("Zeig mir eine Seite über VTuber", 1200)
+    card = mpage.locator(".confirm-card:not(.confirm-done)").last
+    ctext = card.inner_text() if card.count() else ""
+    check("Website: Karte zeigt Domain und volle Adresse", "de.wikipedia.org" in ctext and WIKI in ctext and "Ja" in r)
+    check("Website: vor der Bestätigung nichts geöffnet", mpage.evaluate("window.__opened.length") == 0 and not popups)
+    mask("Ja", 900)
+    check("Website: gesprochenes/getipptes „Ja“ öffnet genau diese Adresse, Karte erledigt",
+          mpage.evaluate("window.__opened") == [WIKI] and mpage.locator(".confirm-card.confirm-done").count() >= 1)
+    mask("Ja", 600)
+    check("Website: zweites „Ja“ öffnet nichts mehr", len(mpage.evaluate("window.__opened")) == 1)
+    mask("Such im Internet nach VTuber Rigging", 900)
+    mpage.locator(".confirm-card:not(.confirm-done) .confirm-no").last.click(); mpage.wait_for_timeout(400)
+    check("Websuche: Karte, „Nein“ öffnet nichts", len(mpage.evaluate("window.__opened")) == 1)
+    r = mask("Einen Link bitte", 1200)
+    links = mpage.locator("#chat .msg a").count()
+    check("KI-Antwort mit Link: als Text, kein klickbarer Link, nichts geöffnet", "evil.example" in r and links == 0
+          and len(mpage.evaluate("window.__opened")) == 1 and not popups)
+
+    # „Vergiss alles“ nur mit Bestätigung
+    mask("Vergiss alles", 700)
+    mpage.locator(".confirm-card:not(.confirm-done) .confirm-no").last.click(); mpage.wait_for_timeout(400)
+    kept = len(mem()) == 2
+    mask("Vergiss alles", 700)
+    mask("ja", 700)
+    check("Gedächtnis: „Vergiss alles“ nur nach Ja (Nein behält alles)", kept and len(mem()) == 0)
+    mctx.close()
+
     if not URL.startswith("http://localhost"):
         page.wait_for_timeout(300)
         page.screenshot(path=str(SHOTS / "pages-live.png"))
