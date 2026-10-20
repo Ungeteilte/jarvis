@@ -165,6 +165,34 @@
         <button id="btn-eve-test" type="button" class="btn">▶ Jetzt testen</button>
       </fieldset>
 
+      <fieldset id="memory-fieldset">
+        <legend>Gedächtnis</legend>
+        <p class="hint">Was Jarvis über Sie weiß. Per Sprache: „Merk dir, dass …“, „Was weißt du über mich?“, „Vergiss, dass …“, „Vergiss das“ (direkt danach). Notizen („Notiere …“, „Schreib auf …“) sind getrennt.</p>
+        <label class="switch"><input id="set-mem-ai" type="checkbox"> Gedächtnis an die KI senden (passende Einträge bei jeder KI-Frage)</label>
+        <p class="hint">⚠️ Beim kostenlosen Gemini-Zugang darf Google Eingaben laut seinen Bedingungen zur Verbesserung seiner Dienste nutzen, auch durch menschliche Prüfer. Schalten Sie das aus, wenn Ihnen das zu viel ist – „Was weißt du über mich?“ funktioniert trotzdem. Passwörter, PINs, IBAN und Kartennummern speichert Jarvis nie.</p>
+        <p class="hint web-only">Im Browser liegt das Gedächtnis unverschlüsselt (localStorage); andere Seiten unter ungeteilte.github.io könnten es lesen. In der Android-App ist es verschlüsselt.</p>
+        <div class="row">
+          <input id="mem-new" type="text" maxlength="200" placeholder="z. B. Ich streame dienstags um 20 Uhr">
+          <button id="btn-mem-add" type="button" class="btn">Merken</button>
+        </div>
+        <p id="mem-status" class="hint" aria-live="polite"></p>
+        <ul id="mem-list" class="mem-list"></ul>
+        <div class="row wrap">
+          <button id="btn-mem-migrate" type="button" class="btn">Notizen ins Gedächtnis übernehmen</button>
+          <button id="btn-mem-export" type="button" class="btn">Exportieren</button>
+          <button id="btn-mem-clear" type="button" class="btn danger">Gedächtnis löschen</button>
+        </div>
+        <details id="mem-import-box">
+          <summary>Importieren (JSON einfügen)</summary>
+          <textarea id="mem-import" rows="4" placeholder='{"items":[{"text":"…"}]}'></textarea>
+          <button id="btn-mem-import" type="button" class="btn">Importieren</button>
+        </details>
+        <p class="hint">Vorlieben (gelten für KI-Antworten; per Sprache: „Antworte kürzer“, „Duz mich“, „Weniger Witze“):</p>
+        <label>Antwortlänge <select id="set-pref-len"></select></label>
+        <label>Anrede <select id="set-pref-anrede"></select></label>
+        <label>Humor <select id="set-pref-humor"></select></label>
+      </fieldset>
+
       <fieldset>
         <legend>Daten</legend>
         <button id="btn-shownotes" type="button" class="btn">Notizen anzeigen</button>

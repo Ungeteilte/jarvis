@@ -186,6 +186,7 @@ export function addConfirmCard({ title, detail }, { onYes, onNo }) {
     div.classList.add('confirm-done');
     fn?.();
   };
+  div.closeCard = () => done(null); // per Sprache („Ja“/„Nein“) erledigt
   yes.addEventListener('click', () => done(onYes));
   no.addEventListener('click', () => done(onNo));
   row.append(yes, no);

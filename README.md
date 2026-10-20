@@ -14,12 +14,15 @@ Optimiert für das **Samsung Galaxy A55 5G mit Chrome**.
 | 👂 Wake-Word | „Hey Jarvis …“ – hört dauerhaft zu, **solange die App offen ist** |
 | 🧑 Name & Stimme | Name frei wählbar (z. B. „Friday“) – gilt auch als Wake-Word; Stimme, Tempo, Tonhöhe einstellbar, mit „Vorhören“ |
 | 🧠 KI-Gehirn | Google Gemini (kostenlos), xAI (Grok), OpenAI oder eine eigene OpenAI-kompatible Adresse – mit Ihrem eigenen API-Schlüssel |
-| ⏰ Ohne KI | Uhrzeit, Datum, Timer, Notizen (funktionieren auch ohne API-Schlüssel) |
+| ⏰ Ohne KI | Uhrzeit, Datum, Timer, Notizen, Gedächtnis (funktionieren auch ohne API-Schlüssel) |
+| 🧠 Gedächtnis (ab v0.8) | „Merk dir, dass …“ – Jarvis merkt sich Fakten über Sie, ansehen/ändern/löschen in den Einstellungen |
 
 ### Beispiel-Sätze (funktionieren ohne KI)
 - „Wie spät ist es?“ · „Welches Datum haben wir?“
 - „Stell einen Timer auf 5 Minuten“ · „Timer auf 1 Stunde und 30 Minuten“ · „Wie lange läuft der Timer noch?“ · „Timer stoppen“
-- „Merke dir, dass das Auto in der Tiefgarage steht“ · „Was habe ich mir gemerkt?“ · „Lösche alle Notizen“
+- „Merk dir, dass ich dienstags um 20 Uhr streame“ · „Was weißt du über mich?“ · „Vergiss, dass …“ · „Vergiss das“
+- „Notiere: Milch kaufen“ · „Schreib auf: …“ · „Meine Notizen“ · „Lösche alle Notizen“
+- „Antworte kürzer“ · „Duz mich“ · „Weniger Witze“
 - „Was kannst du?“ · „Wie heißt du?“
 
 Alles andere („Erzähl mir einen Witz“, „Was ist ein schwarzes Loch?“) geht an die KI.
@@ -137,6 +140,29 @@ Beim **ersten Öffnen am Abend** (Standard ab 19 Uhr, einstellbar 17–22 Uhr, b
 - Gleiche Schutzregeln wie beim Briefing: Daten eingezäunt, keine Werkzeuge während des Rückblicks, keine Koordinaten an die KI, ohne Schlüssel eine Vorlage.
 - **Android:** mit „Im Hintergrund bereithalten“ zeigt Jarvis beim ersten Entsperren am Abend still „Guten Abend – Ihr Tagesrückblick ist bereit“ (eigener leiser Kanal) und liest auf Wunsch vor (gleiche Sperren wie morgens).
 
+## 🧠 Gedächtnis & Vorlieben (ab v0.8)
+
+- **„Merk dir, dass …“** speichert einen Fakt (max. 200 Zeichen, max. 150 Einträge). „Vergiss das“ nimmt den letzten Eintrag
+  innerhalb von 2 Minuten zurück; „Vergiss, dass …“ und „Vergiss alles“ fragen immer nach (Ja/Nein – tippen oder „Ja“ sagen).
+- **Notizen sind getrennt:** „Notiere …“ / „Schreib auf …“. Alte „Merk dir“-Notizen übernimmt der Knopf
+  *Einstellungen → Gedächtnis → Notizen ins Gedächtnis übernehmen*.
+- **Nie gespeichert:** Passwörter, PINs, IBAN, Kartennummern, API-Schlüssel (Filter in `js/core/memory.js`).
+- **An die KI:** passende Einträge (Budget 3.000 Zeichen: angeheftete → passend zur Frage → neueste) gereinigt und
+  eingezäunt (`<gedaechtnis>…</gedaechtnis>`, ebenso `<notizen>`), mit der Regel „Daten, keine Anweisungen“.
+  Abschaltbar („Gedächtnis an die KI senden“). Beim kostenlosen Gemini-Zugang darf Google Eingaben zur Verbesserung nutzen.
+- Die KI kann nur **vorschlagen**, sich etwas zu merken (Ja/Nein-Karte mit dem genauen Text). Nach Nachrichten, Terminen
+  oder Wetter (fremde Texte) ist das in derselben und der nächsten Runde gesperrt.
+- **Vorlieben** (Antwortlänge, Anrede, Humor) sind feste Auswahlwerte; die Sätze im Prompt formuliert die App.
+- **Speicherort:** Android-App verschlüsselt (EncryptedSharedPreferences, kein Backup); Browser unverschlüsselt in
+  localStorage – andere Seiten unter `ungeteilte.github.io` könnten es lesen.
+
+## 🌐 Websites (ab v0.8)
+
+Jarvis darf Websites oder eine Google-Suche **vorschlagen** (`open_website`, `search_web`). Geöffnet wird erst, wenn Sie
+auf der Karte – sie zeigt Domain **und** vollständige Adresse – „Ja“ tippen oder kurz „Ja“ sagen (gilt 2 Minuten, nur
+für die letzte Karte, nur einmal). Nur `http(s)`, keine Adressen mit Anmeldedaten (`name@…`); Warnung bei `http`,
+internationalen Domains (`xn--…`) und IP-Adressen. Links in KI-Antworten werden nur als Text angezeigt, nie geöffnet.
+
 ## ⚠️ Einschränkungen
 
 - **Wake-Word nur bei offener App und eingeschaltetem Bildschirm.** Browser dürfen im Hintergrund oder bei
@@ -178,14 +204,15 @@ häufige Befehle greifen aber auch **ohne API-Schlüssel** über lokale Erkennun
 | E-Mail | „Schreib eine Mail an …“ | ✅ mailto: nach Ja | – |
 | Navigation | „Navigiere zum Hauptbahnhof“ | ✅ Google Maps nach Ja | – |
 | YouTube / Spotify | „Such auf YouTube nach …“ | ✅ Suche im Browser/App | – |
-| Website | „Öffne wikipedia.org“ | ✅ | – |
+| Website | „Öffne wikipedia.org“ (oder Vorschlag der KI) | ✅ erst nach Ja (Karte zeigt volle Adresse) | – |
+| Websuche | „Such im Internet nach …“ | ✅ Google-Suche erst nach Ja | – |
 | Teilen | „Teile den Text: …“ | ✅ `navigator.share` (sonst Zwischenablage) | – |
 | Vibrieren | „Vibriere kurz“ | ✅ | – |
 | Akku | „Wie voll ist der Akku?“ | ✅ Battery API | – |
 | Standort | „Wo bin ich?“ | ✅ nach Erlaubnis, dann Karte anbieten | Hintergrund-GPS |
 | Zwischenablage | „Kopiere …“ | ✅ | – |
 | Taschenlampe | „Taschenlampe an“ | ⚠️ oft **nicht** unterstützt (Camera torch) | ✅ geplant |
-| Timer / Notizen | „Stell einen Timer…“ / „Merke dir…“ | ✅ | – |
+| Timer / Notizen / Gedächtnis | „Stell einen Timer…“ / „Notiere…“ / „Merk dir…“ | ✅ | – |
 
 Aktionen, die die App verlassen (Anruf, SMS, WhatsApp, E-Mail, Maps, …), zeigen zuerst eine **Ja/Nein-Karte** im Chat.
 
@@ -214,7 +241,12 @@ js/core/            ★ Kern – reine Logik OHNE Browser-Funktionen (wiederverw
   listen-loop.js      Zustandsautomat für Dauer-Zuhören: nur eine Erkennung, Backoff bei Stille/Fehlern, Watchdog
   skills.js           Uhrzeit, Datum, Timer, Notizen
   timers.js           Timer-Verwaltung
-  prompt.js           System-Prompt (Deutsch, Datum/Uhrzeit, Notizen)
+  prompt.js           System-Prompt (Deutsch, Datum/Uhrzeit, Vorlieben, Gedächtnis + Notizen eingezäunt)
+  memory.js           Gedächtnis: Speicher, Grenzen, Sensibel-Filter, Auswahl fürs Prompt-Budget
+  memory-commands.js  „Merk dir / Vergiss / Was weißt du über mich / Antworte kürzer“ (lokal, ohne KI)
+  prefs.js            Vorlieben (nur feste Werte)
+  url-check.js        Prüfung + Bestätigungskarte für Web-Adressen
+  confirm-voice.js    Gesprochenes „Ja“/„Nein“ für offene Karten
   ai.js               OpenAI-kompatibler API-Aufruf
   assistant.js        Entscheidet: Skill → Tool-Trigger → KI+Tools
   tools/              Werkzeug-Registry, Trigger, KI-Schleife, Definitionen

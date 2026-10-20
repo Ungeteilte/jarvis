@@ -146,7 +146,7 @@ output { color: var(--text); }
 .hint a { color: var(--cyan); }
 
 .confirm-card .confirm-body { display: flex; flex-direction: column; gap: 8px; }
-.confirm-detail { font-size: 0.9rem; color: var(--muted); word-break: break-word; }
+.confirm-detail { font-size: 0.9rem; color: var(--muted); word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
 .confirm-actions { display: flex; gap: 8px; margin-top: 4px; }
 .confirm-actions .btn { flex: 1; min-height: 44px; }
 .confirm-card.confirm-done { opacity: 0.55; }
@@ -163,6 +163,14 @@ output { color: var(--text); }
 
 /* Morgen-Briefing */
 html:not(.jarvis-native) .native-only { display: none !important; }
+html.jarvis-native .web-only { display: none !important; }
+.mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mem-item { display: flex; gap: 6px; align-items: center; background: rgba(0, 0, 0, 0.25); border-radius: 10px; padding: 6px 8px; }
+.mem-item .mem-text { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 0.9rem; }
+.mem-item .mem-meta { font-size: 0.75rem; color: var(--muted); }
+.mem-item input.mem-edit { flex: 1; }
+.mem-item .btn { padding: 4px 8px; font-size: 0.8rem; }
+#mem-import { width: 100%; box-sizing: border-box; }
 .ressorts { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .ressorts label { display: inline-flex; align-items: center; gap: 6px; }
 .row.wrap { flex-wrap: wrap; gap: 8px; }

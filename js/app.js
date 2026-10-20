@@ -158,6 +158,7 @@ function createSentenceSpeaker(myTurn) {
   };
 }
 
+const openCards = new Map(); // Antwort-ID → offene Ja/Nein-Karte (für gesprochenes Ja/Nein)
 let turn = 0; // zählt Eingaben, damit eine alte Sprachausgabe keine neue stört
 async function handleInput(text) {
   const input = String(text || '').trim();
@@ -222,9 +223,13 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
   } else if (reply) {
     if (bubble) { speaker?.reset(); bubble.remove(); }
     view.addMessage(reply);
+    if (reply.confirmResolved) { openCards.get(reply.confirmResolved)?.closeCard?.(); openCards.delete(reply.confirmResolved); }
+    if (reply.memoryChanged && !$('#view-settings').classList.contains('hidden')) settingsView.refreshMemory();
     if (reply.confirm) {
-      view.addConfirmCard(reply.confirm, {
+      const cardId = reply.id;
+      openCards.set(cardId, view.addConfirmCard(reply.confirm, {
         onYes: async () => {
+          openCards.delete(cardId);
           const r = await assistant.confirmAction(reply.confirm.action);
           if (r) { view.addMessage(r); await say(r.text); }
         },
@@ -232,7 +237,7 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
           const r = assistant.cancelAction();
           if (r) { view.addMessage(r); await say(r.text); }
         }
-      });
+      }));
     }
     view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
     await say(reply.text);
