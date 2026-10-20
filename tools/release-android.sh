@@ -42,6 +42,14 @@ BT="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
 APKSIGNER="$BT/apksigner"; AAPT="$BT/aapt"
 GRADLE_FILE="$ANDROID_DIR/android/app/build.gradle"
 
+# ---------- Pflicht-Tests vor jedem Release (vor dem Versions-Bump: bei Fehler bleibt alles unverändert) ----------
+echo "Tests: JS-Unit-Tests …"
+(cd "$REPO_DIR" && node --test tests/ >/dev/null) || { echo "JS-Unit-Tests fehlgeschlagen – Abbruch" >&2; exit 1; }
+echo "Tests: nativer App-Start (native_boot_test, gebautes www) …"
+(cd "$ANDROID_DIR" && npm run -s sync-www >/dev/null)
+python3 "$REPO_DIR/tools/native_boot_test.py" --www "$ANDROID_DIR/www" >/dev/null \
+  || { echo "native_boot_test fehlgeschlagen (Sprachausgabe/Adapter beim App-Start) – Abbruch" >&2; exit 1; }
+
 # ---------- Version erhöhen ----------
 OLD_CODE=$(grep -E '^\s*versionCode [0-9]+' "$GRADLE_FILE" | grep -oE '[0-9]+')
 OLD_NAME=$(grep -E '^\s*versionName "' "$GRADLE_FILE" | sed -E 's/.*"(.*)".*/\1/')

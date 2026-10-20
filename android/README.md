@@ -56,6 +56,9 @@ Tests: `./gradlew testDebugUnitTest` (JUnit) und `tests/updater-format.test.mjs`
 `tools/updater_ui_test.py` (Headless-UI mit Fake-Plugin).
 
 ### Veröffentlichen
+
+Vor jedem Release laufen automatisch (Abbruch bei Fehler, vor dem Versions-Bump): `node --test tests/` und `tools/native_boot_test.py` gegen das gebaute `www` (nativer Start: `app.js` wartet auf `window.__JARVIS_BOOT__`, höchstens 3 s; native Sprachausgabe, kein Willkommens-Dialog). Zusätzlich vorher von Hand: `tools/browser_test.py`, `tools/updater_ui_test.py` (Server `python3 -m http.server 8080`).
+
 ```bash
 export JARVIS_SIGNING_DIR=/pfad/zu/jarvis-signing   # außerhalb des Repos!
 export ANDROID_DIR=/pfad/zum/capacitor-projekt JAVA_HOME=… ANDROID_HOME=…

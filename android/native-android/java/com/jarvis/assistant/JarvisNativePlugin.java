@@ -209,6 +209,10 @@ public class JarvisNativePlugin extends Plugin {
                 @Override public void onStart(String utteranceId) {}
                 @Override public void onDone(String utteranceId) { done.countDown(); }
                 @Override public void onError(String utteranceId) { done.countDown(); }
+                @Override public void onError(String utteranceId, int errorCode) { done.countDown(); }
+                // stop()/QUEUE_FLUSH melden nur onStop – ohne das wartete speak bis zu 120 s
+                // und blockierte den gemeinsamen Plugin-Thread (auch stopSpeaking).
+                @Override public void onStop(String utteranceId, boolean interrupted) { done.countDown(); }
             });
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, id);
             done.await(120, TimeUnit.SECONDS);
