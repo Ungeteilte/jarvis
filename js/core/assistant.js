@@ -1,9 +1,9 @@
 // Der "Kopf": lokale Skills → lokale Tool-Trigger → KI mit Tool-Schleife.
 // Komplett browser-frei – UI und Sprachausgabe hängen sich nur an.
 
-import { handleSkill, loadNotes } from './skills.js';
+import { handleSkill, loadNotes, parseClockTime } from './skills.js';
 import { buildSystemPrompt } from './prompt.js';
-import { loadSettings, resolveProvider } from './settings.js';
+import { loadSettings, saveSettings, resolveProvider } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
 import { createLocalTransport, makeMsgEvent, makeDeltaEvent, newId } from './realtime/index.js';
@@ -11,7 +11,9 @@ import { createToolRegistry } from './tools/registry.js';
 import { askAIStream } from './ai.js';
 import {
   gatherFacts, buildBriefingMessages, templateBriefing, factsContext, localFollowUp,
-  isBriefingRequest, handleBriefingCommand, saveBriefingState, dayKey, RESSORT_IDS, normalizeBriefingConfig
+  isBriefingRequest, handleBriefingCommand, saveBriefingState, loadBriefingState, dayKey, RESSORT_IDS, normalizeBriefingConfig,
+  gatherEveningFacts, buildEveningMessages, templateEvening, eveningContext, eveningFollowUp,
+  isEveningRequest, eveningCommand, normalizeEveningConfig
 } from './briefing/index.js';
 
 const HISTORY_KEY = 'history';
@@ -22,7 +24,9 @@ const FOLLOW_UP_MS = 30 * 60000;
 export const FOLLOW_UP_TOOLS = new Set([
   'call_phone', 'send_sms', 'send_whatsapp', 'send_email', 'navigate', 'open_youtube', 'open_spotify',
   'open_website', 'get_location', 'get_battery', 'list_notes', 'list_capabilities',
-  'get_weather', 'get_news', 'get_calendar_events'
+  'get_weather', 'get_news', 'get_calendar_events',
+  // Wecker: die Uhr-App zeigt ihn vor dem Speichern an (SKIP_UI=false) → vom Nutzer bestätigt
+  'set_alarm'
 ]);
 
 export function createAssistant({ store, timers, device, fetchFn, now = () => new Date(), registry, transport, stream = true, timeZone } = {}) {
@@ -62,15 +66,18 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
   }
 
   /**
-   * Morgen-Briefing: Fakten parallel sammeln → KI (gestreamt, OHNE Werkzeuge) oder Vorlage.
+   * Morgen-Briefing (kind='morning') oder Abendzusammenfassung (kind='evening'):
+   * Fakten parallel sammeln → KI (gestreamt, OHNE Werkzeuge) oder Vorlage.
    * auto=true: automatisch ausgelöst (fragt nie nach Erlaubnissen).
    */
-  async function brief({ onDelta, signal, auto = false, replyTo = 'briefing' } = {}) {
+  async function brief({ onDelta, signal, auto = false, replyTo = 'briefing', kind = 'morning' } = {}) {
+    const evening = kind === 'evening';
     const settings = loadSettings(store);
     const cfg = normalizeBriefingConfig(settings.briefing, RESSORT_IDS);
     const c = { ...ctx(), interactive: !auto, signal };
     const nowMs = c.now.getTime();
-    saveBriefingState(store, { lastBriefingDay: dayKey(nowMs, timeZone), lastBriefingAt: nowMs });
+    if (evening) saveBriefingState(store, { lastEveningDay: dayKey(nowMs, timeZone), lastEveningAt: nowMs });
+    else saveBriefingState(store, { lastBriefingDay: dayKey(nowMs, timeZone), lastBriefingAt: nowMs });
     let seq = 0;
     let emitted = false;
     const relay = (d) => {
@@ -80,13 +87,19 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       }
       try { onDelta?.(d); } catch { /* UI-Fehler nicht durchreichen */ }
     };
-    const facts = await gatherFacts({ registry: tools, ctx: c, cfg });
+    const facts = evening
+      ? await gatherEveningFacts({
+        registry: tools, ctx: c, cfg: normalizeEveningConfig(settings.evening), briefingCfg: cfg,
+        history: history.filter((m) => m.source !== 'briefing'), firedTimers: loadBriefingState(store).firedTimers || []
+      })
+      : await gatherFacts({ registry: tools, ctx: c, cfg });
     const pcfg = resolveProvider(settings);
     let text = '';
     let source = 'briefing';
     if (pcfg.apiKey) {
       try {
-        const out = await askAIStream(pcfg, buildBriefingMessages({ name: c.name, facts }), {
+        const msgs = evening ? buildEveningMessages({ name: c.name, facts }) : buildBriefingMessages({ name: c.name, facts });
+        const out = await askAIStream(pcfg, msgs, {
           onDelta: relay, fetchFn, signal, timeoutMs: 25000, stream
         });
         text = String(out.data?.choices?.[0]?.message?.content || '').trim();
@@ -97,12 +110,12 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     }
     if (!text) {
       if (emitted) relay({ type: 'reset' });
-      text = templateBriefing(facts, { name: c.name });
+      text = evening ? templateEvening(facts, { name: c.name }) : templateBriefing(facts, { name: c.name });
       relay({ type: 'text', text });
       source = 'briefing';
     }
     emitEvent(makeDeltaEvent({ replyTo, seq: seq++, done: true }));
-    return add('assistant', text, { source, facts, auto: Boolean(auto) });
+    return add('assistant', text, { source, kind: evening ? 'evening' : 'morning', facts, auto: Boolean(auto) });
   }
 
   return {
@@ -146,6 +159,11 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       const cmd = handleBriefingCommand(input, store);
       if (cmd) return add('assistant', cmd, { source: 'skill', settingsChanged: true });
       if (isBriefingRequest(input)) return brief({ onDelta, signal, auto: false, replyTo: userMsg.id });
+      // 0b) Abendzusammenfassung: „Abendzusammenfassung aus/an“, „Wie war mein Tag?“
+      const ecfg = normalizeEveningConfig(loadSettings(store).evening);
+      const ecmd = eveningCommand(input, ecfg, (next) => saveSettings(store, { evening: normalizeEveningConfig(next) }));
+      if (ecmd) return add('assistant', ecmd, { source: 'skill', settingsChanged: true });
+      if (isEveningRequest(input)) return brief({ onDelta, signal, auto: false, replyTo: userMsg.id, kind: 'evening' });
 
       // 1) Klassische Skills (Uhrzeit, Datum, Timer, Notizen, Name)
       const local = handleSkill(input, c);
@@ -161,11 +179,19 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         return add('assistant', hit.text, meta);
       }
 
+      // 2b) Nach dem Angebot im Tagesrückblick reicht eine Uhrzeit („7 Uhr“, „halb sieben“) für den Wecker
+      const recent = recentBriefing();
+      const recentEvening = recent?.kind === 'evening';
+      if (recentEvening && input.length <= 40 && /^(?:(?:ja|gerne?|bitte|okay|ok)[ ,]+)*(?:(?:den |einen )?wecker )?(?:um |auf |fuer |für |gegen )?[\wäöü:. ]+$/i.test(input) &&
+          !/\b(?:minute|sekunde|stunde|timer)/i.test(input) && parseClockTime(input)) {
+        const r = await tools.run('set_alarm', { time: input }, c);
+        return add('assistant', r.message || 'Erledigt.', { source: 'tool', tool: 'set_alarm', unsupported: r.unsupported || undefined });
+      }
+
       // 3) KI mit Tool-Schleife
       const cfg = resolveProvider(loadSettings(store));
-      const recent = recentBriefing();
       if (!cfg.apiKey && recent) {
-        const fu = localFollowUp(input, recent.facts);
+        const fu = recentEvening ? eveningFollowUp(input, recent.facts) : localFollowUp(input, recent.facts);
         if (fu) return add('assistant', fu, { source: 'skill' });
       }
       if (!cfg.apiKey) {
@@ -178,7 +204,7 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       });
       let loopTools = tools;
       if (recent) {
-        system += '\n' + factsContext(recent.facts);
+        system += '\n' + (recentEvening ? eveningContext(recent.facts) : factsContext(recent.facts));
         loopTools = createToolRegistry(tools.list().filter((t) => FOLLOW_UP_TOOLS.has(t.name)));
       }
       const chat = history.filter((m) => m.role === 'user' || (m.role === 'assistant' && m.source !== 'system'));

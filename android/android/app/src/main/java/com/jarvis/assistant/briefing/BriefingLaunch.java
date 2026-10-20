@@ -13,11 +13,15 @@ public final class BriefingLaunch {
 
     public static final String ACTION = "com.jarvis.assistant.action.MORNING_BRIEFING";
     public static final String EXTRA_NONCE = "nonce";
+    public static final String EXTRA_KIND = "kind";
+    public static final String KIND_MORNING = "morning";
+    public static final String KIND_EVENING = "evening";
 
     public interface Listener { void onLaunch(); }
 
     private static volatile boolean pending = false;
     private static volatile boolean trusted = false;
+    private static volatile String kind = KIND_MORNING;
     private static volatile Listener listener;
 
     public static void setListener(Listener l) { listener = l; }
@@ -27,6 +31,9 @@ public final class BriefingLaunch {
         if (intent == null || !ACTION.equals(intent.getAction())) return false;
         String nonce = null;
         try { nonce = intent.getStringExtra(EXTRA_NONCE); } catch (Exception ignored) {}
+        String k = null;
+        try { k = intent.getStringExtra(EXTRA_KIND); } catch (Exception ignored) {}
+        kind = KIND_EVENING.equals(k) ? KIND_EVENING : KIND_MORNING; // nur bekannte Werte
         trusted = BriefingState.consumeNonce(c, nonce);
         pending = true;
         Listener l = listener;
@@ -41,4 +48,7 @@ public final class BriefingLaunch {
         trusted = false;
         return r;
     }
+
+    /** Art des letzten Starts (morning|evening) – vor consume() abfragen. */
+    public static String kind() { return kind; }
 }

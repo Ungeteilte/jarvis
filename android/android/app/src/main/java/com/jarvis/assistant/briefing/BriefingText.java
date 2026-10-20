@@ -159,47 +159,55 @@ public final class BriefingText {
         double d = o.optDouble(k, Double.NaN);
         return Double.isNaN(d) ? null : d;
     }
-    private static Double first(JSONObject o, String k) {
+    private static Double at(JSONObject o, String k, int i) {
         JSONArray a = o == null ? null : o.optJSONArray(k);
-        if (a == null || a.length() == 0 || a.isNull(0)) return null;
-        double d = a.optDouble(0, Double.NaN);
+        if (a == null || a.length() <= i || a.isNull(i)) return null;
+        double d = a.optDouble(i, Double.NaN);
         return Double.isNaN(d) ? null : d;
     }
 
     /** Open-Meteo-JSON → Wetter heute. Wirft bei Unsinn. */
-    public static Weather parseWeather(String json) throws Exception {
+    public static Weather parseWeather(String json) throws Exception { return parseWeather(json, 0); }
+
+    /** dayIndex 0 = heute (mit aktuellem Wert), 1 = morgen (nur Tageswerte). */
+    public static Weather parseWeather(String json, int dayIndex) throws Exception {
+        int i = dayIndex == 1 ? 1 : 0;
         JSONObject j = new JSONObject(json);
         JSONObject daily = j.getJSONObject("daily");
-        JSONObject cur = j.optJSONObject("current");
+        JSONObject cur = i == 0 ? j.optJSONObject("current") : null;
         Weather w = new Weather();
         w.now = opt(cur, "temperature_2m");
         Double cc = opt(cur, "weather_code");
         w.nowText = cc == null ? null : WMO.get(cc.intValue());
-        w.max = first(daily, "temperature_2m_max");
-        w.min = first(daily, "temperature_2m_min");
-        w.rainChance = first(daily, "precipitation_probability_max");
-        Double dc = first(daily, "weather_code");
+        w.max = at(daily, "temperature_2m_max", i);
+        w.min = at(daily, "temperature_2m_min", i);
+        w.rainChance = at(daily, "precipitation_probability_max", i);
+        Double dc = at(daily, "weather_code", i);
         w.dayText = dc == null ? null : WMO.get(dc.intValue());
         if (w.now == null && w.max == null && w.min == null) throw new Exception("Keine Wetterwerte");
         return w;
     }
 
-    public static String weatherSentence(Weather w) {
+    public static String weatherSentence(Weather w) { return weatherSentence(w, "Heute"); }
+
+    /** lead = „Heute“ oder „Morgen“ (dann ohne aktuellen Wert). */
+    public static String weatherSentence(Weather w, String lead) {
         if (w == null) return "";
+        boolean today = "Heute".equals(lead);
         StringBuilder sb = new StringBuilder();
         String where = w.stale ? "An Ihrem zuletzt bekannten Ort" : "Bei Ihnen";
-        if (w.now != null) {
+        if (today && w.now != null) {
             sb.append(where).append(" sind es gerade ").append(Math.round(w.now)).append(" Grad");
             if (w.nowText != null) sb.append(", ").append(w.nowText);
             sb.append(". ");
         }
         String range = w.min != null && w.max != null ? "zwischen " + Math.round(w.min) + " und " + Math.round(w.max) + " Grad"
             : w.max != null ? "bis " + Math.round(w.max) + " Grad" : "";
-        StringBuilder d = new StringBuilder("Heute");
+        StringBuilder d = new StringBuilder(lead);
         if (w.dayText != null) d.append(" ").append(w.dayText).append(range.isEmpty() ? "" : ",");
         if (!range.isEmpty()) d.append(" ").append(range);
         if (w.rainChance != null && w.rainChance >= 30) d.append(", Regenrisiko ").append(Math.round(w.rainChance)).append(" Prozent");
-        if (d.length() > 5) sb.append(d).append(".");
+        if (d.length() > lead.length()) sb.append(d).append(".");
         return sb.toString().trim();
     }
 
@@ -257,6 +265,78 @@ public final class BriefingText {
             sb.append(" ");
         }
         sb.append("Mehr dazu, wenn Sie Jarvis öffnen.");
+        return sb.toString().replaceAll("\\s+", " ").replace("..", ".").trim();
+    }
+
+    // ---------- Abendzusammenfassung ----------
+    /** Feste Themen-Etiketten aus js/core/briefing/evening.js – nur diese werden übernommen. */
+    public static final Set<String> TOPICS = new HashSet<>(java.util.Arrays.asList(
+        "Wetter", "Termine", "Nachrichten", "Timer und Wecker", "Notizen", "Anrufe und Nachrichten an Kontakte",
+        "Navigation", "Musik und Videos", "Handy-Einstellungen", "Uhrzeit und Datum", "Briefing", "allgemeine Fragen"));
+
+    public static final class DayStats {
+        public final int chats, notes, timers; public final List<String> topics;
+        public DayStats(int chats, List<String> topics, int notes, int timers) {
+            this.chats = Math.max(0, chats); this.notes = Math.max(0, notes); this.timers = Math.max(0, timers);
+            List<String> t = new ArrayList<>();
+            if (topics != null) for (String s : topics) if (s != null && TOPICS.contains(s) && !t.contains(s) && t.size() < 3) t.add(s);
+            this.topics = t;
+        }
+    }
+
+    public static final String EVENING_OFFER = "Soll ich Ihnen einen Wecker für morgen stellen? Öffnen Sie dazu einfach Jarvis.";
+    private static final String[] TIMES = {"keinmal", "einmal", "zweimal", "dreimal", "viermal", "fünfmal", "sechsmal", "siebenmal", "achtmal", "neunmal", "zehnmal", "elfmal", "zwölfmal"};
+
+    private static String joinDe(List<String> l) {
+        if (l.isEmpty()) return "";
+        if (l.size() == 1) return l.get(0);
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < l.size() - 1; i++) { if (i > 0) sb.append(", "); sb.append(l.get(i)); }
+        return sb.append(" und ").append(l.get(l.size() - 1)).toString();
+    }
+
+    /**
+     * Kurzer Tagesrückblick für Benachrichtigung und Vorlesen (ohne KI).
+     * stats=null: keine Zahlen von der App; tomorrow/events/news=null: nicht verfügbar/aus.
+     * titles=false: Termine nur mit Anzahl und erster Uhrzeit.
+     */
+    public static String composeEvening(long nowMs, TimeZone tz, DayStats stats, Weather tomorrow, List<Event> events,
+                                        List<NewsItem> news, boolean titles) {
+        StringBuilder sb = new StringBuilder("Guten Abend. ");
+        if (stats != null) {
+            if (stats.chats == 0) sb.append("Heute haben wir noch nicht miteinander gesprochen. ");
+            else {
+                sb.append("Heute haben Sie mich ").append(stats.chats < TIMES.length ? TIMES[stats.chats] : stats.chats + "-mal").append(" gefragt");
+                if (!stats.topics.isEmpty()) sb.append(", vor allem zu ").append(joinDe(stats.topics));
+                sb.append(". ");
+            }
+            List<String> extra = new ArrayList<>();
+            if (stats.notes > 0) extra.add(stats.notes == 1 ? "eine neue Notiz" : (stats.notes < NUM.length ? NUM[stats.notes] : String.valueOf(stats.notes)) + " neue Notizen");
+            if (stats.timers > 0) extra.add(stats.timers == 1 ? "ein abgelaufener Timer" : (stats.timers < NUM.length ? NUM[stats.timers] : String.valueOf(stats.timers)) + " abgelaufene Timer");
+            if (!extra.isEmpty()) {
+                boolean single = extra.size() == 1 && (stats.notes == 1 || stats.timers == 1);
+                sb.append(single ? "Dazu kommt " : "Dazu kommen ").append(joinDe(extra)).append(". ");
+            }
+        }
+        if (events != null) {
+            if (events.isEmpty()) sb.append("Morgen stehen keine Termine im Kalender. ");
+            else {
+                Event first = null;
+                for (Event e : events) if (!e.allDay) { first = e; break; }
+                int n = events.size();
+                sb.append("Morgen haben Sie ").append(n == 1 ? "einen Termin" : (n < NUM.length ? NUM[n] : String.valueOf(n)) + " Termine");
+                if (first != null) {
+                    sb.append(n == 1 ? ", um " : ", den ersten um ").append(clock(first.begin, tz)).append(" Uhr");
+                    if (titles && !first.title.isEmpty()) sb.append(": ").append(first.title);
+                } else if (titles && !events.get(0).title.isEmpty()) {
+                    sb.append(": ").append(events.get(0).title);
+                }
+                sb.append(". ");
+            }
+        }
+        if (tomorrow != null) sb.append(weatherSentence(tomorrow, "Morgen")).append(" ");
+        if (news != null && !news.isEmpty()) sb.append("Aus den Nachrichten des Tages: ").append(stripEnd(news.get(0).title)).append(". ");
+        sb.append(EVENING_OFFER);
         return sb.toString().replaceAll("\\s+", " ").replace("..", ".").trim();
     }
 

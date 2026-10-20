@@ -30,11 +30,31 @@ public final class BriefingFetcher {
     public static BriefingText.Weather weather(Context ctx, long nowMs, int timeoutMs) {
         double[] co = BriefingState.coords(ctx, nowMs);
         if (co == null) return null;
+        BriefingText.Weather[] both = weatherBoth(ctx, co, timeoutMs);
+        return both == null ? null : both[0];
+    }
+
+    /** Wetter für morgen (Abendzusammenfassung) – gleiche Abfrage, Tag 2 → Cache. */
+    public static BriefingText.Weather weatherTomorrow(Context ctx, long nowMs, int timeoutMs) {
+        double[] co = BriefingState.coords(ctx, nowMs);
+        if (co == null) return null;
+        BriefingText.Weather[] both = weatherBoth(ctx, co, timeoutMs);
+        return both == null ? null : both[1];
+    }
+
+    private static BriefingText.Weather[] weatherBoth(Context ctx, double[] co, int timeoutMs) {
         try {
-            BriefingText.Weather w = BriefingText.parseWeather(get(BriefingPolicy.weatherUrl(co[0], co[1]), BriefingPolicy.MAX_WEATHER_BYTES, timeoutMs));
+            String json = get(BriefingPolicy.weatherUrl(co[0], co[1]), BriefingPolicy.MAX_WEATHER_BYTES, timeoutMs);
+            BriefingText.Weather w = BriefingText.parseWeather(json, 0);
             w.stale = co[2] > 0;
             BriefingState.saveWeather(ctx, w);
-            return w;
+            BriefingText.Weather t = null;
+            try {
+                t = BriefingText.parseWeather(json, 1);
+                t.stale = co[2] > 0;
+                BriefingState.saveWeatherTomorrow(ctx, t);
+            } catch (Exception ignored) { /* nur heute geliefert */ }
+            return new BriefingText.Weather[]{w, t};
         } catch (Exception e) {
             return null;
         }

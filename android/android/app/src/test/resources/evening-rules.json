@@ -1,0 +1,336 @@
+{
+ "timeZone": "Europe/Berlin",
+ "note": "Gemeinsame Testfälle für js/core/briefing/evening.js (shouldEvening) und BriefingRules.decideEvening (Java) – beide Kopien müssen identisch sein.",
+ "cases": [
+  {
+   "name": "normaler Abend 20:10",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "heute schon zusammengefasst",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "2026-10-20",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "already",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "gestern zusammengefasst zählt nicht",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "2026-10-19",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "zu früh 18:30",
+   "now": "2026-10-20T18:30:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Beginn genau 19:00",
+   "now": "2026-10-20T19:00:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Start 17 Uhr, 17:05",
+   "now": "2026-10-20T17:05:00+02:00",
+   "lastActiveAt": "2026-10-20T12:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 17,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Start 22 Uhr, 21:59",
+   "now": "2026-10-20T21:59:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 22,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Start 22 Uhr, 22:00",
+   "now": "2026-10-20T22:00:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 22,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "22:59 noch erlaubt",
+   "now": "2026-10-20T22:59:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "23:00 Nachtsperre",
+   "now": "2026-10-20T23:00:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "night",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "02:00 Nachtsperre, Vortag",
+   "now": "2026-10-21T02:00:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "night",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Morgens 08:00 zu früh",
+   "now": "2026-10-20T08:00:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "ausgeschaltet",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": false,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "disabled",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Einrichtung offen",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": false,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "onboarding",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "allererster Start",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": null,
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "first-start",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Uhr zurückgestellt",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T21:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "clock",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Morgen-Briefing vor 30 Minuten",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": "2026-10-20T19:40:00+02:00",
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "recent-briefing",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Morgen-Briefing vor 61 Minuten",
+   "now": "2026-10-20T20:10:00+02:00",
+   "lastActiveAt": "2026-10-20T18:00:00+02:00",
+   "lastBriefingAt": "2026-10-20T19:09:00+02:00",
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-20"
+   }
+  },
+  {
+   "name": "Zeitumstellung Herbst (Sonntag, MEZ)",
+   "now": "2026-10-25T19:30:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Zeitumstellung Herbst 18:59 MEZ",
+   "now": "2026-10-25T18:59:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Zeitumstellung Frühling 19:00 MESZ",
+   "now": "2026-03-29T19:00:00+02:00",
+   "lastActiveAt": "2026-03-29T10:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-03-29"
+   }
+  },
+  {
+   "name": "Zeitumstellung Frühling 18:00 UTC = 20:00 MESZ",
+   "now": "2026-03-29T18:00:00Z",
+   "lastActiveAt": "2026-03-29T10:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastEveningDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "startHour": 19,
+   "expect": {
+    "ok": true,
+    "reason": "evening",
+    "day": "2026-03-29"
+   }
+  }
+ ]
+}

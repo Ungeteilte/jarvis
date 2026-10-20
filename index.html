@@ -145,6 +145,24 @@
         <button id="btn-brief-test" type="button" class="btn">▶ Jetzt testen</button>
       </fieldset>
 
+      <fieldset id="evening-fieldset">
+        <legend>Abendzusammenfassung</legend>
+        <label class="switch"><input id="set-eve-enabled" type="checkbox"> Tagesrückblick beim ersten Öffnen am Abend</label>
+        <label>Ab
+          <select id="set-eve-start"></select>
+        </label>
+        <p class="hint">Einmal pro Abend, bis 23 Uhr. „Wie war mein Tag?“, „Tagesrückblick“ oder „Abendzusammenfassung“ geht jederzeit; „Abendzusammenfassung aus“ schaltet sie ab.</p>
+        <p class="hint">Inhalte:</p>
+        <label class="switch"><input id="set-eve-chats" type="checkbox"> Gespräche von heute (nur Anzahl &amp; Themen)</label>
+        <label class="switch"><input id="set-eve-notes" type="checkbox"> Heute notiert</label>
+        <label class="switch"><input id="set-eve-timers" type="checkbox"> Abgelaufene Timer</label>
+        <label class="switch native-only"><input id="set-eve-calendar" type="checkbox"> Erste Termine morgen</label>
+        <label class="switch"><input id="set-eve-weather" type="checkbox"> Wetter morgen</label>
+        <label class="switch"><input id="set-eve-news" type="checkbox"> Nachrichten des Tages (Rubriken wie beim Briefing)</label>
+        <p class="hint native-only">Hintergrund und Vorlesen richten sich nach den Schaltern beim Morgen-Briefing.</p>
+        <button id="btn-eve-test" type="button" class="btn">▶ Jetzt testen</button>
+      </fieldset>
+
       <fieldset>
         <legend>Daten</legend>
         <button id="btn-shownotes" type="button" class="btn">Notizen anzeigen</button>

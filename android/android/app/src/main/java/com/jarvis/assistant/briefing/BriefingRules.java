@@ -43,6 +43,30 @@ public final class BriefingRules {
     }
 
     public static int clampGap(int h) { return Math.max(3, Math.min(8, h)); }
+    public static int clampEveningStart(int h) { return Math.max(17, Math.min(22, h)); }
+    /** Kein Rückblick in der ersten Stunde nach einem Morgen-Briefing. */
+    public static final long EVENING_AFTER_BRIEFING_MS = H;
+
+    /**
+     * Abendzusammenfassung – Spiegel von shouldEvening in js/core/briefing/evening.js
+     * (gemeinsame Fälle: src/test/resources/evening-rules.json).
+     * Fenster startHour … 23:00, einmal pro Tag, nicht beim allerersten Start.
+     */
+    public static Decision decideEvening(long nowMs, TimeZone tz, long lastActivityMs, long lastBriefingAtMs,
+                                         String lastEveningDay, boolean enabled, boolean onboarded, int startHour) {
+        String day = dayKey(nowMs, tz);
+        if (!enabled) return new Decision(false, "disabled", day);
+        if (!onboarded) return new Decision(false, "onboarding", day);
+        if (day.equals(lastEveningDay)) return new Decision(false, "already", day);
+        int h = hourOf(nowMs, tz);
+        if (h >= NIGHT_LOCK_HOUR || h < DAY_START_HOUR) return new Decision(false, "night", day);
+        if (h < clampEveningStart(startHour)) return new Decision(false, "early", day);
+        if (lastActivityMs <= 0) return new Decision(false, "first-start", day);
+        if (nowMs - lastActivityMs < 0) return new Decision(false, "clock", day);
+        long sinceBriefing = nowMs - lastBriefingAtMs;
+        if (lastBriefingAtMs > 0 && sinceBriefing >= 0 && sinceBriefing < EVENING_AFTER_BRIEFING_MS) return new Decision(false, "recent-briefing", day);
+        return new Decision(true, "evening", day);
+    }
     public static int clampLatest(int h) { return Math.max(8, Math.min(23, h)); }
 
     /**

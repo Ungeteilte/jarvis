@@ -21,6 +21,7 @@ import com.jarvis.assistant.R;
  * Zwei eigene Kanäle (getrennt vom Updater-Kanal „updates“, ID 4711):
  *  - ready_v1  „Jarvis bereit“: IMPORTANCE_MIN, lautlos, ohne Symbol in der Statusleiste, ohne Badge (ID 4721)
  *  - briefing_v1 „Morgen-Briefing“: IMPORTANCE_LOW, ohne Ton und Vibration, privat auf dem Sperrbildschirm (ID 4722)
+ *  - evening_v1 „Abendzusammenfassung“: gleiche leise Voreinstellungen (ID 4723)
  * Kanal-Einstellungen sind nach dem ersten Anlegen fest (der Nutzer kann sie ändern) → Version im Namen.
  */
 public final class BriefingNotifier {
@@ -28,9 +29,11 @@ public final class BriefingNotifier {
 
     public static final String CHANNEL_READY = "ready_v1";
     public static final String CHANNEL_BRIEFING = "briefing_v1";
+    public static final String CHANNEL_EVENING = "evening_v1";
+    public static final int ID_EVENING = 4723;
     public static final int ID_READY = 4721;
     public static final int ID_BRIEFING = 4722;
-    static final int RC_OPEN = 21, RC_PAUSE = 22, RC_OFF = 23, RC_READY_OPEN = 24;
+    static final int RC_OPEN = 21, RC_PAUSE = 22, RC_OFF = 23, RC_READY_OPEN = 24, RC_EVENING_OPEN = 25;
 
     static void ensureChannels(Context c) {
         if (Build.VERSION.SDK_INT < 26) return;
@@ -49,6 +52,15 @@ public final class BriefingNotifier {
         if (nm.getNotificationChannel(CHANNEL_BRIEFING) == null) {
             NotificationChannel ch = new NotificationChannel(CHANNEL_BRIEFING, "Morgen-Briefing", NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("„Guten Morgen – Ihr Briefing ist bereit“ (standardmäßig ohne Ton und Vibration)");
+            ch.setSound(null, null);
+            ch.enableVibration(false);
+            ch.setShowBadge(true);
+            ch.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+            nm.createNotificationChannel(ch);
+        }
+        if (nm.getNotificationChannel(CHANNEL_EVENING) == null) {
+            NotificationChannel ch = new NotificationChannel(CHANNEL_EVENING, "Abendzusammenfassung", NotificationManager.IMPORTANCE_LOW);
+            ch.setDescription("„Guten Abend – Ihr Tagesrückblick ist bereit“ (standardmäßig ohne Ton und Vibration)");
             ch.setSound(null, null);
             ch.enableVibration(false);
             ch.setShowBadge(true);
@@ -77,7 +89,7 @@ public final class BriefingNotifier {
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, CHANNEL_READY)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentTitle("Jarvis ist bereit")
-            .setContentText("Briefing beim ersten Entsperren am Morgen")
+            .setContentText(readyText(c))
             .setContentIntent(pi)
             .setOngoing(true)
             .setSilent(true)
@@ -92,19 +104,37 @@ public final class BriefingNotifier {
         return b.build();
     }
 
+    static String readyText(Context c) {
+        boolean m = BriefingState.enabled(c), e = BriefingState.eveningEnabled(c);
+        if (m && e) return "Briefing am Morgen, Rückblick am Abend – beim ersten Entsperren";
+        if (e) return "Tagesrückblick beim ersten Entsperren am Abend";
+        return "Briefing beim ersten Entsperren am Morgen";
+    }
+
     /** „Guten Morgen – Ihr Briefing ist bereit“. Volltext nur entsperrt sichtbar. */
     static void briefing(Context c, String text) {
+        post(c, text, false);
+    }
+
+    /** „Guten Abend – Ihr Tagesrückblick ist bereit“ (eigener leiser Kanal). */
+    static void evening(Context c, String text) {
+        post(c, text, true);
+    }
+
+    private static void post(Context c, String text, boolean evening) {
         if (!canNotify(c)) return;
         ensureChannels(c);
+        String channel = evening ? CHANNEL_EVENING : CHANNEL_BRIEFING;
         String nonce = BriefingState.newNonce(c);
         Intent open = new Intent(c, MainActivity.class).setAction(BriefingLaunch.ACTION)
             .putExtra(BriefingLaunch.EXTRA_NONCE, nonce)
+            .putExtra(BriefingLaunch.EXTRA_KIND, evening ? BriefingLaunch.KIND_EVENING : BriefingLaunch.KIND_MORNING)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        PendingIntent pi = PendingIntent.getActivity(c, RC_OPEN, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        String title = "Guten Morgen – Ihr Briefing ist bereit";
-        Notification pub = new NotificationCompat.Builder(c, CHANNEL_BRIEFING)
+        PendingIntent pi = PendingIntent.getActivity(c, evening ? RC_EVENING_OPEN : RC_OPEN, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String title = evening ? "Guten Abend – Ihr Tagesrückblick ist bereit" : "Guten Morgen – Ihr Briefing ist bereit";
+        Notification pub = new NotificationCompat.Builder(c, channel)
             .setSmallIcon(R.drawable.ic_stat_jarvis).setContentTitle(title).setContentText("Entsperren zum Ansehen").build();
-        NotificationCompat.Builder b = new NotificationCompat.Builder(c, CHANNEL_BRIEFING)
+        NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentTitle(title)
             .setContentText(text)
@@ -116,7 +146,7 @@ public final class BriefingNotifier {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(pub)
-            .setTimeoutAfter(6 * BriefingRules.H);
-        try { NotificationManagerCompat.from(c).notify(ID_BRIEFING, b.build()); } catch (SecurityException ignored) {}
+            .setTimeoutAfter(evening ? 4 * BriefingRules.H : 6 * BriefingRules.H);
+        try { NotificationManagerCompat.from(c).notify(evening ? ID_EVENING : ID_BRIEFING, b.build()); } catch (SecurityException ignored) {}
     }
 }

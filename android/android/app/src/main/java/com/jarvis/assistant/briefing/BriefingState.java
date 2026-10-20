@@ -60,6 +60,44 @@ public final class BriefingState {
         if (a != null) for (int i = 0; i < a.length(); i++) out.add(a.optString(i));
         return out;
     }
+    // ---------- Abendzusammenfassung ----------
+    public static JSONObject eveningConfig(Context c) {
+        JSONObject o = sync(c).optJSONObject("evening");
+        return o == null ? new JSONObject() : o;
+    }
+    public static boolean eveningEnabled(Context c) { return eveningConfig(c).optBoolean("enabled", true); }
+    public static int eveningStartHour(Context c) { return BriefingRules.clampEveningStart(eveningConfig(c).optInt("startHour", 19)); }
+    public static boolean eveningContent(Context c, String key) {
+        JSONObject ct = eveningConfig(c).optJSONObject("content");
+        return ct == null || ct.optBoolean(key, true);
+    }
+    /** Morgen-Briefing oder Abendzusammenfassung an? (Dann darf der Hintergrund-Dienst laufen.) */
+    public static boolean anyEnabled(Context c) { return enabled(c) || eveningEnabled(c); }
+
+    /** Heutige Zahlen aus der App (nur Anzahl + feste Themen-Etiketten), sonst null. */
+    public static BriefingText.DayStats todayStats(Context c, String day) {
+        JSONObject t = sync(c).optJSONObject("today");
+        if (t == null || !day.equals(t.optString("day", ""))) return null;
+        List<String> topics = new ArrayList<>();
+        JSONArray a = t.optJSONArray("topics");
+        if (a != null) for (int i = 0; i < a.length() && topics.size() < 4; i++) topics.add(a.optString(i));
+        return new BriefingText.DayStats(t.optInt("chats", 0), topics, t.optInt("notes", 0), t.optInt("timers", 0));
+    }
+
+    public static String lastEveningDay(Context c) {
+        String js = sync(c).optString("lastEveningDay", "");
+        String bg = prefs(c).getString("bgEveningDay", "");
+        return js.compareTo(bg) >= 0 ? js : bg;
+    }
+    /** Letztes Morgen-Briefing (App oder Hintergrund). */
+    public static long lastBriefingAt(Context c) {
+        return Math.max(sync(c).optLong("lastBriefingAt", 0), prefs(c).getLong("bgAt", 0));
+    }
+    public static void markEvening(Context c, String day, boolean spoken) {
+        prefs(c).edit().putString("bgEveningDay", day).putBoolean("bgEveningSpoken", spoken).apply();
+    }
+    public static void markEveningSpoken(Context c) { prefs(c).edit().putBoolean("bgEveningSpoken", true).apply(); }
+
     public static boolean onboarded(Context c) { JSONObject s = sync(c); return s.has("onboarded") ? s.optBoolean("onboarded") : s.has("config"); }
 
     /** Gerundete Koordinaten, wenn jung genug, gleiche Zeitzone und nicht nach einem Zeitzonenwechsel. */
@@ -78,7 +116,8 @@ public final class BriefingState {
 
     /** Zeitzone gewechselt (Reise): gespeicherten Ort und Wetter-Cache verwerfen. */
     public static void onTimezoneChanged(Context c) {
-        prefs(c).edit().putLong("coordsClearedAt", System.currentTimeMillis()).remove("cacheWeather").remove("cacheWeatherAt").apply();
+        prefs(c).edit().putLong("coordsClearedAt", System.currentTimeMillis()).remove("cacheWeather").remove("cacheWeatherAt")
+            .remove("cacheWeather1").remove("cacheWeather1At").apply();
     }
 
     // ---------- Hintergrund-Schalter ----------
@@ -140,6 +179,15 @@ public final class BriefingState {
         try { for (BriefingText.NewsItem n : items) a.put(new JSONObject().put("t", n.title).put("s", n.summary).put("at", n.at)); } catch (Exception ignored) {}
         prefs(c).edit().putString("cacheNews", a.toString()).putLong("cacheNewsAt", System.currentTimeMillis()).apply();
     }
+    public static void saveWeatherTomorrow(Context c, BriefingText.Weather w) {
+        prefs(c).edit().putString("cacheWeather1", w.toJson().toString()).putLong("cacheWeather1At", System.currentTimeMillis()).apply();
+    }
+    /** Wetter für morgen aus dem Vorladen (höchstens 6 h alt). */
+    public static BriefingText.Weather cachedWeatherTomorrow(Context c, long nowMs) {
+        long at = prefs(c).getLong("cacheWeather1At", 0);
+        if (at <= 0 || nowMs - at > CACHE_MAX_AGE_MS) return null;
+        try { return BriefingText.Weather.fromJson(new JSONObject(prefs(c).getString("cacheWeather1", "{}"))); } catch (Exception e) { return null; }
+    }
     public static List<BriefingText.NewsItem> cachedNews(Context c, long nowMs) {
         long at = prefs(c).getLong("cacheNewsAt", 0);
         if (at <= 0 || nowMs - at > CACHE_MAX_AGE_MS) return null;
@@ -191,6 +239,8 @@ public final class BriefingState {
             o.put("lastLongRestMs", p.getLong("restMs", 0));
             o.put("bgDay", p.getString("bgDay", ""));
             o.put("bgSpoken", p.getBoolean("bgSpoken", false));
+            o.put("bgEveningDay", p.getString("bgEveningDay", ""));
+            o.put("bgEveningSpoken", p.getBoolean("bgEveningSpoken", false));
             o.put("backgroundEnabled", backgroundEnabled(c));
             o.put("bgOffByNotification", offByNotification(c));
         } catch (Exception ignored) {}

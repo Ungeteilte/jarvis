@@ -62,6 +62,27 @@ export function formatDuration(ms) {
 const NOTES_KEY = 'notes';
 export const loadNotes = (store) => store.get(NOTES_KEY, []);
 
+const HOUR_WORDS = { ein: 1, eins: 1, zwei: 2, drei: 3, vier: 4, fuenf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, zwoelf: 12 };
+const hourTok = (w) => (/^\d{1,2}$/.test(w) ? Number(w) : HOUR_WORDS[w] ?? null);
+
+/**
+ * Uhrzeit aus gesprochenem Text: „7 Uhr“, „7:30“, „7.30 Uhr“, „7 Uhr 15“, „halb sieben“,
+ * „viertel nach 7“, „viertel vor acht“. → { hour, minute } oder null.
+ */
+export function parseClockTime(text) {
+  const t = normalizeText(String(text || '').replace(/(\d)\s*[:.]\s*(\d{2})(?!\d)/g, '$1 uhr $2'));
+  const ok = (h, m) => (h >= 0 && h <= 23 && m >= 0 && m <= 59 ? { hour: h, minute: m } : null);
+  let m = t.match(/\bhalb (\w+)/);
+  if (m && hourTok(m[1]) !== null) return ok((hourTok(m[1]) + 23) % 24, 30);
+  m = t.match(/\bviertel nach (\w+)/);
+  if (m && hourTok(m[1]) !== null) return ok(hourTok(m[1]), 15);
+  m = t.match(/\b(?:viertel vor|dreiviertel) (\w+)/);
+  if (m && hourTok(m[1]) !== null) return ok((hourTok(m[1]) + 23) % 24, 45);
+  m = t.match(/\b(\w+) uhr(?: (\d{1,2}))?\b/);
+  if (m && hourTok(m[1]) !== null) return ok(hourTok(m[1]), m[2] ? Number(m[2]) : 0);
+  return null;
+}
+
 /**
  * ctx = { store, timers, now: Date, name }
  */
@@ -94,6 +115,8 @@ export function handleSkill(text, ctx) {
 
   // --- Timer ---
   if (/timer|wecker|countdown/.test(t)) {
+    // „Wecker auf 7 Uhr“ ist ein Wecker in der Uhr-App (Werkzeug set_alarm), kein Timer.
+    if (/wecker/.test(t) && !/timer|countdown/.test(t) && parseClockTime(raw)) return null;
     if (/(stopp|stop|abbrech|loesch|beend|aus\b|cancel)/.test(t)) {
       const n = ctx.timers.cancelAll();
       return n ? `${n === 1 ? 'Der Timer wurde' : n + ' Timer wurden'} gestoppt.` : 'Es läuft derzeit kein Timer.';

@@ -370,6 +370,98 @@ with sync_playwright() as p:
         bpage.screenshot(path=str(SHOTS / "briefing.png"))
         bctx.close()
 
+    # 8) Abendzusammenfassung (feste Uhrzeit 20:10, Morgen-Briefing schon gehabt, Verlauf/Notizen von heute)
+    if URL.startswith("http://localhost"):
+        ectx = browser.new_context(viewport={"width": 412, "height": 915}, is_mobile=True, has_touch=True,
+                                   locale="de-DE", timezone_id="Europe/Berlin",
+                                   permissions=["geolocation"], geolocation={"latitude": 52.520008, "longitude": 13.404954})
+        ectx.add_init_script("""
+          if (window.speechSynthesis) speechSynthesis.speak = () => {};
+          if (!localStorage.getItem('jarvis.persona')) {
+            const now = Date.now();
+            localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Jarvis', onboarded: true }));
+            localStorage.setItem('jarvis.settings', JSON.stringify({ provider: 'gemini', apiKeys: { gemini: 'test-key' }, speak: true }));
+            localStorage.setItem('jarvis.briefingState', JSON.stringify({ lastActiveAt: now - 2 * 3600000, lastBriefingDay: '2026-10-20', lastBriefingAt: now - 12 * 3600000 }));
+            localStorage.setItem('jarvis.history', JSON.stringify([
+              { id: 'h1', role: 'user', text: 'Wie wird das Wetter? Geheimprojekt Falke', at: '2026-10-20T06:30:00.000Z' },
+              { id: 'h2', role: 'assistant', text: 'Bewölkt.', at: '2026-10-20T06:30:02.000Z' },
+              { id: 'h3', role: 'user', text: 'Stell einen Timer auf 5 Minuten', at: '2026-10-20T10:00:00.000Z' }
+            ]));
+            localStorage.setItem('jarvis.notes', JSON.stringify([{ text: 'Brot kaufen', at: '2026-10-20T09:00:00.000Z' }]));
+          }
+        """)
+        epage = ectx.new_page()
+        epage.clock.set_fixed_time("2026-10-20T20:10:00+02:00")
+        epage.on("pageerror", lambda e: errors.append(f"evening pageerror: {e}"))
+        epage.on("console", lambda m: m.type == "error" and errors.append(f"evening console: {m.text}"))
+        enet = {"weather": [], "ai": []}
+        def e_meteo(route):
+            enet["weather"].append(route.request.url)
+            route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
+                          body=json.dumps({"current": {"temperature_2m": 9, "weather_code": 3},
+                                           "daily": {"weather_code": [3, 61], "temperature_2m_max": [12.4, 17.6], "temperature_2m_min": [5.2, 8.4],
+                                                     "precipitation_probability_max": [10, 80], "precipitation_sum": [0, 4]}}))
+        def e_news(route):
+            route.fulfill(status=200, content_type="application/rss+xml", headers={"access-control-allow-origin": "*"},
+                          body='<?xml version="1.0"?><rss><channel><item><title>Abendmeldung eins</title></item></channel></rss>')
+        def e_gem(route):
+            if route.request.method == "GET":
+                route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"data": []}))
+                return
+            enet["ai"].append(json.loads(route.request.post_data or "{}"))
+            route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
+                          body=json.dumps({"choices": [{"message": {"content": "Guten Abend, Sir. Ein ruhiger Tag liegt hinter Ihnen. Soll ich Ihnen einen Wecker für morgen stellen?"}}]}))
+        epage.route("https://api.open-meteo.com/**", e_meteo)
+        epage.route("https://www.tagesschau.de/**", e_news)
+        epage.route("https://generativelanguage.googleapis.com/**", e_gem)
+        epage.goto(URL)
+        epage.wait_for_load_state("networkidle")
+        ecard = None
+        try:
+            ecard = epage.wait_for_selector("#evening-card", timeout=4000)
+        except Exception:
+            pass
+        check("Abend: Tipp-Karte beim ersten Öffnen am Abend", ecard is not None and "Tagesrückblick" in (ecard.inner_text() if ecard else ""))
+        check("Abend: kein Morgen-Briefing am Abend", epage.locator("#briefing-card").count() == 0)
+        if ecard:
+            epage.click("#evening-card .start-go")
+        try:
+            epage.wait_for_selector(".msg.assistant:has-text('Ein ruhiger Tag')", timeout=10000)
+        except Exception:
+            pass
+        check("Abend: KI-Text angezeigt", epage.locator(".msg.assistant", has_text="Ein ruhiger Tag").count() == 1)
+        eai = enet["ai"][0] if enet["ai"] else {}
+        eai_text = json.dumps(eai, ensure_ascii=False)
+        check("Abend: KI-Aufruf ohne Werkzeuge", bool(eai) and not eai.get("tools"))
+        check("Abend: Daten eingezäunt, Statistik statt Zitate, keine Koordinaten",
+              "<daten>" in eai_text and '\\"chats\\":2' in eai_text and "Falke" not in eai_text and "52.52" not in eai_text)
+        check("Abend: Wetter morgen in den Daten", '\\"max\\":17.6' in eai_text and len(enet["weather"]) >= 1)
+        est = epage.evaluate("JSON.parse(localStorage.getItem('jarvis.briefingState') || '{}')")
+        check("Abend: Tag gemerkt (Morgen-Briefing unberührt)", est.get("lastEveningDay") == "2026-10-20" and est.get("lastBriefingDay") == "2026-10-20")
+        epage.reload(); epage.wait_for_load_state("networkidle"); epage.wait_for_timeout(800)
+        check("Abend: kein zweites Mal am selben Abend", epage.locator("#evening-card").count() == 0 and len(enet["ai"]) == 1)
+        def eask(text, wait=700):
+            epage.fill("#input", text); epage.click("#btn-send"); epage.wait_for_timeout(wait)
+            return epage.locator(".msg.assistant").last.inner_text()
+        r = eask("Stell einen Wecker auf 7 Uhr")
+        check("Abend: 'Wecker auf 7 Uhr' ist kein Timer (Web: Hinweis auf App)", "Android-App" in r and "Timer laufen" not in r)
+        r = eask("Abendzusammenfassung aus")
+        ecfg = epage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).evening")
+        check("Abend: 'Abendzusammenfassung aus' per Sprache", ecfg.get("enabled") is False and "ausgeschaltet" in r)
+        epage.click("#btn-settings"); epage.wait_for_timeout(300)
+        check("Abend: Einstellungen sichtbar (Start 17–22, Kalender nur App)", epage.is_visible("#evening-fieldset")
+              and epage.locator("#set-eve-start option").count() == 6 and not epage.is_visible("#set-eve-calendar")
+              and not epage.is_checked("#set-eve-enabled"))
+        epage.check("#set-eve-enabled")
+        epage.select_option("#set-eve-start", "21")
+        epage.uncheck("#set-eve-news")
+        epage.click("#settings-form button[type=submit]")
+        epage.wait_for_timeout(300)
+        ecfg = epage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).evening")
+        check("Abend: Einstellungen gespeichert", ecfg.get("enabled") is True and ecfg.get("startHour") == 21 and ecfg["content"]["news"] is False)
+        epage.screenshot(path=str(SHOTS / "evening.png"))
+        ectx.close()
+
     if not URL.startswith("http://localhost"):
         page.wait_for_timeout(300)
         page.screenshot(path=str(SHOTS / "pages-live.png"))

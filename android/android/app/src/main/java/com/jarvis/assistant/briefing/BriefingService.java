@@ -72,7 +72,7 @@ public class BriefingService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (!running || !BriefingState.backgroundEnabled(this) || !BriefingState.enabled(this)) {
+        if (!running || !BriefingState.backgroundEnabled(this) || !BriefingState.anyEnabled(this)) {
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -97,19 +97,61 @@ public class BriefingService extends Service {
         return pm != null && pm.isInteractive() && km != null && !km.isKeyguardLocked();
     }
 
-    /** Entsperrt: erst Regeln prüfen (mit dem Stand VOR dieser Sitzung), dann Sitzung merken. */
+    /** Entsperrt: erst Regeln prüfen (mit dem Stand VOR dieser Sitzung), dann Sitzung merken. Morgens Briefing, abends Rückblick. */
     private void onUnlock(long now, boolean fromBoot) {
         Context c = this;
         TimeZone tz = TimeZone.getDefault();
-        BriefingRules.Decision d = BriefingRules.decide(now, tz, BriefingState.lastActivity(c),
+        long lastActivity = BriefingState.lastActivity(c);
+        BriefingRules.Decision d = BriefingRules.decide(now, tz, lastActivity,
             BriefingState.restEndAt(c), BriefingState.restMs(c), BriefingState.lastBriefedDay(c),
             BriefingState.enabled(c), BriefingState.onboarded(c), BriefingState.gapHours(c), BriefingState.latestHour(c));
+        BriefingRules.Decision e = d.ok ? null : BriefingRules.decideEvening(now, tz, lastActivity,
+            BriefingState.lastBriefingAt(c), BriefingState.lastEveningDay(c),
+            BriefingState.eveningEnabled(c), BriefingState.onboarded(c), BriefingState.eveningStartHour(c));
         if (!fromBoot) BriefingState.recordUnlock(c, now);
-        if (!d.ok || d.day.equals(BriefingState.pausedDay(c)) || !busy.compareAndSet(false, true)) return;
-        BriefingState.markBackground(c, d.day, false); // sofort beanspruchen – kein doppeltes Briefing
+        BriefingRules.Decision go = d.ok ? d : e;
+        if (go == null || !go.ok || go.day.equals(BriefingState.pausedDay(c)) || !busy.compareAndSet(false, true)) return;
+        final boolean evening = !d.ok;
+        // sofort beanspruchen – kein doppeltes Briefing/kein doppelter Rückblick
+        if (evening) BriefingState.markEvening(c, go.day, false);
+        else BriefingState.markBackground(c, go.day, false);
         worker.execute(() -> {
-            try { runBriefing(now); } finally { busy.set(false); }
+            try { if (evening) runEvening(now, go.day); else runBriefing(now); } finally { busy.set(false); }
         });
+    }
+
+    private void runEvening(long now, String day) {
+        Context c = this;
+        TimeZone tz = TimeZone.getDefault();
+        BriefingText.Weather w = null;
+        if (BriefingState.eveningContent(c, "weather")) {
+            w = BriefingFetcher.weatherTomorrow(c, now, 5000);
+            if (w == null) w = BriefingState.cachedWeatherTomorrow(c, now);
+        }
+        List<BriefingText.NewsItem> news = null;
+        if (BriefingState.eveningContent(c, "news")) {
+            news = BriefingFetcher.news(c, 5000);
+            if (news == null) news = BriefingState.cachedNews(c, now);
+        }
+        List<BriefingText.Event> events = null;
+        if (BriefingState.eveningContent(c, "calendar") && CalendarReader.granted(c)) {
+            List<CalendarReader.Item> items = CalendarReader.read(c, 1, now);
+            if (items != null) {
+                events = new ArrayList<>();
+                for (CalendarReader.Item it : items) events.add(new BriefingText.Event(it.title, it.begin, it.allDay));
+            }
+        }
+        BriefingText.DayStats stats = BriefingState.eveningContent(c, "chats") ? BriefingState.todayStats(c, day) : null;
+        if (stats != null && (!BriefingState.eveningContent(c, "notes") || !BriefingState.eveningContent(c, "timers"))) {
+            stats = new BriefingText.DayStats(stats.chats, stats.topics,
+                BriefingState.eveningContent(c, "notes") ? stats.notes : 0, BriefingState.eveningContent(c, "timers") ? stats.timers : 0);
+        }
+        String text = BriefingText.composeEvening(now, tz, stats, w, events, news, BriefingState.speakTitles(c));
+        BriefingNotifier.evening(c, text);
+        if (BriefingState.speakAloud(c)) {
+            try { Thread.sleep(SPEAK_DELAY_MS); } catch (InterruptedException ex) { return; }
+            if (isUnlockedAndOn() && BriefingSpeaker.speak(c, text)) BriefingState.markEveningSpoken(c);
+        }
     }
 
     private void runBriefing(long now) {

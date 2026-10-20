@@ -558,7 +558,8 @@ public class JarvisNativePlugin extends Plugin {
     public void syncBriefing(PluginCall call) {
         try {
             BriefingState.saveSync(getContext(), call.getString("json", "{}"));
-            if (!BriefingState.enabled(getContext()) && BriefingService.isRunning()) BriefingScheduler.cancel(getContext());
+            if (!BriefingState.anyEnabled(getContext()) && BriefingService.isRunning()) BriefingScheduler.cancel(getContext());
+            else { try { BriefingScheduler.refresh(getContext()); } catch (Exception ignored) {} }
             call.resolve(briefingStateObject());
         } catch (Exception e) {
             call.reject("Briefing-Daten ungültig");
@@ -603,8 +604,10 @@ public class JarvisNativePlugin extends Plugin {
     /** Wurde die App über die Briefing-Benachrichtigung geöffnet? (einmalig) */
     @PluginMethod
     public void consumeBriefingLaunch(PluginCall call) {
+        String kind = BriefingLaunch.kind();
         boolean[] r = BriefingLaunch.consume();
         JSObject o = new JSObject();
+        o.put("kind", kind);
         o.put("requested", r[0]);
         o.put("trusted", r[1]);
         call.resolve(o);

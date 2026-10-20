@@ -32,6 +32,8 @@ Siehe `INSTALL-DE.md` für die Installation auf dem Galaxy A55.
 
 Paket `com.jarvis.assistant.briefing`: Vordergrund-Dienst `BriefingService` (Typ `specialUse`, nur wenn „Im Hintergrund bereithalten“ an ist) hört auf `SCREEN_OFF`/`USER_PRESENT`; Regeln in `BriefingRules` (gleiche Testfälle wie JS: `tests/fixtures/briefing-rules.json` = `app/src/test/resources/briefing-rules.json`). Tägliches Vorladen `jarvis-briefing-prefetch` (WorkManager, ca. 04:30) – unabhängig von `jarvis-update-check`. Netz nur zu `api.open-meteo.com` und `www.tagesschau.de` über `SafeHttp` mit eigener Erlaubnisliste (`BriefingPolicy`). Kanäle `ready_v1` (minimal, lautlos) und `briefing_v1` (leise). Start aus der Benachrichtigung mit Einmal-Schlüssel. Kalender über `CalendarReader` (READ_CALENDAR, nur lesen).
 
+**Abendzusammenfassung (ab v0.6):** derselbe Dienst prüft nach dem Morgen-Briefing `BriefingRules.decideEvening` (Testfälle `tests/fixtures/evening-rules.json` = `app/src/test/resources/evening-rules.json`) und zeigt die Vorlage `BriefingText.composeEvening` (nur Zahlen + feste Themen-Etiketten aus der App, Wetter/Termine morgen) im Kanal `evening_v1` (leise, ID 4723). Vorladen `jarvis-evening-prefetch` ca. 30 Min. vor Fensterbeginn (Standard 18:30).
+
 ## 🔄 Selbst-Update (ab v0.3)
 
 Die App sucht im Hintergrund (WorkManager, auch bei geschlossener App) nach neuen
