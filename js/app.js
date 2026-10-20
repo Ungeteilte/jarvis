@@ -14,11 +14,14 @@ import { createWebTTS } from './adapters/web-tts.js';
 import { createWebSTT } from './adapters/web-stt.js';
 import { beep, vibrate } from './adapters/web-audio.js';
 import { createWebDevice } from './adapters/web-device.js';
+import { waitForBoot, adapterKind } from './core/boot.js';
 import {
   shouldBrief, recordActivity, mergeNativeState, loadBriefingState, saveBriefingState, dayKey, localParts, NIGHT_LOCK_HOUR, DAY_START_HOUR
 } from './core/briefing/index.js';
 
-// Native Capacitor-App setzt window.__JARVIS_ADAPTERS__ im Bootstrap.
+// Native Capacitor-App setzt window.__JARVIS_ADAPTERS__ im Bootstrap – erst darauf warten
+// (höchstens 3 s, dann Web-Adapter), sonst gewinnt dieses Modul das Rennen.
+await waitForBoot(globalThis);
 const _A = globalThis.__JARVIS_ADAPTERS__;
 import * as view from './ui/view.js';
 import { createSettingsView } from './ui/settings-view.js';
@@ -30,6 +33,7 @@ const store = createStore(_A?.storage ? _A.storage() : createWebStorageAdapter()
 const tts = _A?.tts ? _A.tts() : createWebTTS();
 const stt = _A?.stt ? _A.stt({ lang: 'de-DE' }) : createWebSTT({ lang: 'de-DE' });
 const device = _A?.device ? _A.device() : createWebDevice();
+console.info(`[Jarvis] Adapter: ${adapterKind(_A)}`);
 let settings = loadSettings(store);
 let persona = loadPersona(store);
 let busy = false;
