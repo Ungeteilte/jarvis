@@ -4,9 +4,9 @@ import { PROVIDERS, loadSettings, saveSettings, resolveProvider } from '../core/
 import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from '../core/persona.js';
 import { askAI, listModels } from '../core/ai.js';
 import { loadNotes } from '../core/skills.js';
-import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig } from '../core/briefing/index.js';
+import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig } from '../core/briefing/index.js';
 
-export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing }) {
+export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing, onTestEvening }) {
   const f = {
     provider: $('#set-provider'), baseurl: $('#set-baseurl'), rowBase: $('#row-baseurl'),
     apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
@@ -95,6 +95,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     f.wake.checked = draft.wakeWord;
     f.notes.classList.add('hidden');
     fillBriefing(draft.briefing);
+    fillEvening(draft.evening);
     refreshVoices();
   }
 
@@ -179,6 +180,31 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     saveSettings(store, { briefing: readBriefing() });
     onTestBriefing?.();
   });
+  // ---------- Abendzusammenfassung ----------
+  const eve = {
+    enabled: $('#set-eve-enabled'), start: $('#set-eve-start'), chats: $('#set-eve-chats'), notes: $('#set-eve-notes'),
+    timers: $('#set-eve-timers'), calendar: $('#set-eve-calendar'), weather: $('#set-eve-weather'), news: $('#set-eve-news')
+  };
+  const EVE_CONTENT = ['chats', 'notes', 'timers', 'calendar', 'weather', 'news'];
+  eve.start.replaceChildren(...EVENING_START_OPTIONS.map((h) => new Option(`${h}:00 Uhr`, String(h))));
+  function fillEvening(cfg) {
+    eve.enabled.checked = cfg.enabled;
+    eve.start.value = String(cfg.startHour);
+    for (const k of EVE_CONTENT) eve[k].checked = cfg.content[k];
+  }
+  function readEvening() {
+    return normalizeEveningConfig({
+      enabled: eve.enabled.checked,
+      startHour: Number(eve.start.value),
+      content: Object.fromEntries(EVE_CONTENT.map((k) => [k, eve[k].checked]))
+    });
+  }
+  $('#btn-eve-test').addEventListener('click', () => {
+    stashProvider();
+    saveSettings(store, { evening: readEvening() });
+    onTestEvening?.();
+  });
+
   const nbBtn = (id, fn) => $(id)?.addEventListener('click', async () => { await fn(); setTimeout(renderNativeStatus, 800); });
   if (nb) {
     nbBtn('#btn-brief-notif', () => nb.requestNotifications());
@@ -269,7 +295,8 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       customBaseUrl: draft.customBaseUrl,
       speak: f.speak.checked,
       wakeWord: f.wake.checked,
-      briefing: readBriefing()
+      briefing: readBriefing(),
+      evening: readEvening()
     });
     const persona = savePersona(store, currentPersonaFromForm());
     toast('Gespeichert.');

@@ -7,7 +7,7 @@ import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } f
 import { createTimerManager } from './core/timers.js';
 import { createAssistant } from './core/assistant.js';
 import { createWakeController } from './core/wake-controller.js';
-import { formatDuration } from './core/skills.js';
+import { formatDuration, loadNotes } from './core/skills.js';
 import { createSentenceChunker } from './core/sentences.js';
 import { createWebStorageAdapter } from './adapters/web-storage.js';
 import { createWebTTS } from './adapters/web-tts.js';
@@ -16,7 +16,8 @@ import { beep, vibrate } from './adapters/web-audio.js';
 import { createWebDevice } from './adapters/web-device.js';
 import { waitForBoot, adapterKind } from './core/boot.js';
 import {
-  shouldBrief, recordActivity, mergeNativeState, loadBriefingState, saveBriefingState, dayKey, localParts, NIGHT_LOCK_HOUR, DAY_START_HOUR
+  shouldBrief, recordActivity, mergeNativeState, loadBriefingState, saveBriefingState, dayKey, localParts, NIGHT_LOCK_HOUR, DAY_START_HOUR,
+  shouldEvening, recordTimerFired, todayStats
 } from './core/briefing/index.js';
 
 // Native Capacitor-App setzt window.__JARVIS_ADAPTERS__ im Bootstrap – erst darauf warten
@@ -42,6 +43,7 @@ const timers = createTimerManager({
   store,
   onDone: (t) => {
     beep({ freq: 988, times: 4 });
+    try { saveBriefingState(store, recordTimerFired(loadBriefingState(store), t.label, Date.now())); } catch { /* nur Statistik */ }
     vibrate([300, 150, 300, 150, 600]);
     const msg = assistant.add('assistant', `Verzeihung, dass ich störe: Ihr Timer über ${t.label} ist abgelaufen.`, { source: 'system' });
     view.addMessage(msg);
@@ -233,10 +235,15 @@ function touchActivity() {
 function syncNative() {
   if (!nativeBriefing) return null;
   const st = loadBriefingState(store);
+  // Für den Tagesrückblick im Hintergrund nur Zahlen und feste Themen-Etiketten – keine Texte
+  const stats = todayStats({ history: assistant.getHistory(), notes: loadNotes(store), firedTimers: st.firedTimers || [], nowMs: Date.now() });
   return nativeBriefing.sync({
     config: settings.briefing,
+    evening: settings.evening,
     lastActiveAt: st.lastActiveAt || 0,
     lastBriefingDay: st.lastBriefingDay || '',
+    lastEveningDay: st.lastEveningDay || '',
+    today: { day: stats.day, chats: stats.chats, topics: stats.topics, notes: stats.notes, timers: stats.timers },
     coords: st.coords || null,
     tz: deviceTz(),
     name: persona.name,
@@ -246,31 +253,34 @@ function syncNative() {
 }
 
 /** Tages-Anspruch sichern (mehrere Tabs: Web-Locks; sonst einfache Prüfung). */
-async function claimBriefingDay(day) {
+async function claimBriefingDay(day, kind = 'morning') {
+  const key = kind === 'evening' ? 'lastEveningDay' : 'lastBriefingDay';
   const claim = () => {
-    if (loadBriefingState(store).lastBriefingDay === day) return false;
-    saveBriefingState(store, { lastBriefingDay: day });
+    if (loadBriefingState(store)[key] === day) return false;
+    saveBriefingState(store, { [key]: day });
     return true;
   };
   if (globalThis.navigator?.locks?.request) {
-    try { return await navigator.locks.request('jarvis-briefing', { ifAvailable: true }, (lock) => (lock ? claim() : false)); } catch { /* weiter */ }
+    try { return await navigator.locks.request(`jarvis-${kind}`, { ifAvailable: true }, (lock) => (lock ? claim() : false)); } catch { /* weiter */ }
   }
   return claim();
 }
 
 /** Briefing starten – im Browser ohne vorherige Geste erst per Tipp-Karte (Autoplay-Sperre). */
-function startBriefing({ auto = true, card = null } = {}) {
-  const run = () => runTurn((onDelta) => assistant.brief({ onDelta, auto }), { status: 'Ich stelle Ihr Briefing zusammen …' })
+const DEFAULT_CARDS = {
+  morning: { id: 'briefing-card', title: '☀️ Guten Morgen – Ihr Briefing ist bereit', detail: 'Tippen zum Starten (Wetter, Termine, Nachrichten).', button: '▶ Briefing starten' },
+  evening: { id: 'evening-card', title: '🌙 Guten Abend – Ihr Tagesrückblick ist bereit', detail: 'Tippen zum Starten (Ihr Tag, Ausblick auf morgen).', button: '▶ Rückblick starten' }
+};
+
+function startBriefing({ auto = true, card = null, kind = 'morning' } = {}) {
+  const evening = kind === 'evening';
+  const run = () => runTurn((onDelta) => assistant.brief({ onDelta, auto, kind: evening ? 'evening' : 'morning' }),
+    { status: evening ? 'Ich stelle Ihren Tagesrückblick zusammen …' : 'Ich stelle Ihr Briefing zusammen …' })
     .then(() => syncNative());
   const needsGesture = !globalThis.__JARVIS_NATIVE__ && settings.speak && tts.isSupported()
     && globalThis.navigator?.userActivation && !navigator.userActivation.hasBeenActive;
   if (card || needsGesture) {
-    view.addStartCard(card || {
-      id: 'briefing-card',
-      title: '☀️ Guten Morgen – Ihr Briefing ist bereit',
-      detail: 'Tippen zum Starten (Wetter, Termine, Nachrichten).',
-      button: '▶ Briefing starten'
-    }, run);
+    view.addStartCard(card || DEFAULT_CARDS[evening ? 'evening' : 'morning'], run);
     return;
   }
   run();
@@ -281,14 +291,14 @@ const inAutoWindow = (nowMs, cfg) => {
   return h >= DAY_START_HOUR && h < NIGHT_LOCK_HOUR && h < cfg.latestHour;
 };
 
-/** Prüft beim Öffnen/Zurückkehren, ob jetzt das Morgen-Briefing fällig ist. Danach Aktivität merken. */
+/** Prüft beim Öffnen/Zurückkehren, ob jetzt das Morgen-Briefing (oder abends der Tagesrückblick) fällig ist. Danach Aktivität merken. */
 async function maybeAutoBriefing() {
   if (briefingChecking) return;
   briefingChecking = true;
   try {
     settings = loadSettings(store);
     const cfg = settings.briefing;
-    if (!cfg.enabled || !persona.onboarded || busy) return;
+    if ((!cfg.enabled && !settings.evening.enabled) || !persona.onboarded || busy) return;
     const nowMs = Date.now();
     const today = dayKey(nowMs);
     if (nativeBriefing) {
@@ -299,6 +309,7 @@ async function maybeAutoBriefing() {
     const native = nativeBriefing ? await nativeBriefing.getState() : null;
     applyNativeBackgroundOff(native);
     const state = mergeNativeState(loadBriefingState(store), native);
+    if (!cfg.enabled) { await maybeEvening(nowMs, today, state, native); return; }
     if (native?.bgDay === today && state.lastBriefingDay !== today && inAutoWindow(nowMs, cfg)) {
       // Der Hintergrund-Dienst hat beim Entsperren schon geprüft (und ggf. benachrichtigt/vorgelesen)
       if (!(await claimBriefingDay(today))) return;
@@ -308,7 +319,7 @@ async function maybeAutoBriefing() {
       return;
     }
     const d = shouldBrief({ nowMs, state, cfg, onboarded: persona.onboarded });
-    if (!d.ok) return;
+    if (!d.ok) { await maybeEvening(nowMs, today, state, native); return; }
     if (await claimBriefingDay(d.day)) startBriefing();
   } catch (e) {
     console.warn('[Jarvis] Briefing-Prüfung', e);
@@ -316,6 +327,19 @@ async function maybeAutoBriefing() {
     touchActivity();
     briefingChecking = false;
   }
+}
+
+/** Abends: erster Besuch im Fenster (Start … 23 Uhr) → Tagesrückblick, einmal pro Tag. */
+async function maybeEvening(nowMs, today, state, native) {
+  const ecfg = settings.evening;
+  if (!ecfg.enabled) return;
+  const st = { ...state, lastEveningDay: state.lastEveningDay || '' };
+  const d = shouldEvening({ nowMs, state: st, cfg: ecfg, onboarded: persona.onboarded });
+  if (!d.ok) return;
+  if (!(await claimBriefingDay(d.day, 'evening'))) return;
+  if (native?.bgEveningDay === today && native.bgEveningSpoken) {
+    startBriefing({ kind: 'evening', card: { id: 'evening-card', title: 'Ausführlicher Tagesrückblick?', detail: 'Die Kurzfassung habe ich Ihnen vorhin schon vorgelesen.', button: '▶ Ausführlich' } });
+  } else startBriefing({ kind: 'evening' });
 }
 
 /** „Ausschalten“ in der Dauer-Benachrichtigung → Einstellung übernehmen (statt sie wieder einzuschalten). */
@@ -330,10 +354,14 @@ function applyNativeBackgroundOff(native) {
 /** Start aus der Benachrichtigung „Guten Morgen – Ihr Briefing ist bereit“ (Android). */
 function onNativeLaunch(r) {
   if (!r?.requested) return;
-  const last = loadBriefingState(store).lastBriefingAt || 0;
+  const kind = r.kind === 'evening' ? 'evening' : 'morning';
+  const st = loadBriefingState(store);
+  const last = (kind === 'evening' ? st.lastEveningAt : st.lastBriefingAt) || 0;
   if (busy || Date.now() - last < 2 * 60000) return; // läuft schon / gerade erst
   touchActivity();
-  if (r.trusted) startBriefing({ auto: true });
+  if (kind === 'evening') saveBriefingState(store, { lastEveningDay: dayKey(Date.now()) });
+  if (r.trusted) startBriefing({ auto: true, kind });
+  else if (kind === 'evening') startBriefing({ kind, card: { id: 'evening-card', title: 'Tagesrückblick starten?', detail: 'Möchten Sie jetzt Ihren Tagesrückblick hören?', button: '▶ Rückblick starten' } });
   else startBriefing({ card: { id: 'briefing-card', title: 'Briefing starten?', detail: 'Möchten Sie jetzt Ihr Morgen-Briefing hören?', button: '▶ Briefing starten' } });
 }
 
@@ -405,13 +433,18 @@ const settingsView = createSettingsView({
     setWake(s.wakeWord);
     showSettings(false);
     if (nativeBriefing) {
-      Promise.resolve(syncNative()).then(() => nativeBriefing.setBackground(s.briefing.background && s.briefing.enabled));
+      Promise.resolve(syncNative()).then(() => nativeBriefing.setBackground(s.briefing.background && (s.briefing.enabled || s.evening.enabled)));
     }
   },
   onTestBriefing: () => {
     settings = loadSettings(store);
     showSettings(false);
     startBriefing({ auto: false });
+  },
+  onTestEvening: () => {
+    settings = loadSettings(store);
+    showSettings(false);
+    startBriefing({ auto: false, kind: 'evening' });
   },
   onClearChat: () => { assistant.clearHistory(); view.renderHistory([]); }
 });
@@ -498,7 +531,7 @@ function init() {
     await syncNative();
     if (nativeBriefing) {
       applyNativeBackgroundOff(await nativeBriefing.getState());
-      if (settings.briefing.enabled && settings.briefing.background) nativeBriefing.setBackground(true);
+      if ((settings.briefing.enabled || settings.evening.enabled) && settings.briefing.background) nativeBriefing.setBackground(true);
     }
   })();
   globalThis.__JARVIS_BRIEFING__ = { check: maybeAutoBriefing, start: (o) => startBriefing(o) };

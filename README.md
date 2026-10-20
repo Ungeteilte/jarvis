@@ -128,6 +128,15 @@ Beim **ersten Öffnen nach dem Aufwachen** (keine Nutzung seit mindestens 4 Stun
 - Datenschutz: Der Standort wird auf ca. 1 km gerundet, nur an Open-Meteo geschickt und **nie an die KI**. Fremde Texte (Schlagzeilen, Termine) werden bereinigt und als reine Daten markiert; das Briefing selbst ruft keine Werkzeuge auf.
 - **Android (ab v0.4):** optional „Im Hintergrund bereithalten“ (Standard aus). Dann zeigt Jarvis beim ersten Entsperren am Morgen eine stille Benachrichtigung mit der Kurzfassung und liest sie auf Wunsch vor (nicht bei Anruf, lautlos/Vibration oder „Nicht stören“; Lautstärke wird nie verändert). Die Hintergrund-Kurzfassung entsteht ohne KI und ohne API-Schlüssel.
 
+## 🌙 Abendzusammenfassung (ab v0.6)
+
+Beim **ersten Öffnen am Abend** (Standard ab 19 Uhr, einstellbar 17–22 Uhr, bis 23 Uhr) gibt Jarvis einen kurzen Tagesrückblick: wie oft und zu welchen Themen Sie heute gefragt haben (nur Anzahl und feste Themen, keine Zitate), heute notierte Dinge, abgelaufene Timer – und einen Ausblick auf morgen (erste Termine nur in der Android-App, Wetter morgen, optional Schlagzeilen des Tages mit den gewählten Ressorts). Zum Schluss ein Angebot: „Soll ich Ihnen einen Wecker für morgen stellen …?“ – danach genügt „7 Uhr“ oder „halb sieben“.
+
+- Einmal pro Abend, nicht direkt nach einem Morgen-Briefing, nie beim allerersten Start.
+- Per Sprache: „Wie war mein Tag?“, „Tagesrückblick“, „Abendzusammenfassung“; „Abendzusammenfassung aus/an“. Neu: „Stell einen Wecker auf 7 Uhr“ / „Weck mich um halb sieben“ (Uhr-App, nur Android).
+- Gleiche Schutzregeln wie beim Briefing: Daten eingezäunt, keine Werkzeuge während des Rückblicks, keine Koordinaten an die KI, ohne Schlüssel eine Vorlage.
+- **Android:** mit „Im Hintergrund bereithalten“ zeigt Jarvis beim ersten Entsperren am Abend still „Guten Abend – Ihr Tagesrückblick ist bereit“ (eigener leiser Kanal) und liest auf Wunsch vor (gleiche Sperren wie morgens).
+
 ## ⚠️ Einschränkungen
 
 - **Wake-Word nur bei offener App und eingeschaltetem Bildschirm.** Browser dürfen im Hintergrund oder bei

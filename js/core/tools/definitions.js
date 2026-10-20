@@ -1,6 +1,6 @@
 // Alle Handy-Werkzeuge. Jedes ruft nur über ctx.device Plattformfunktionen auf.
 import { phoneDigits, stripQuotes, after } from './triggers.js';
-import { formatDuration, parseDuration, loadNotes } from '../skills.js';
+import { formatDuration, parseDuration, loadNotes, parseClockTime } from '../skills.js';
 import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 
 const str = (d) => ({ type: 'string', description: d });
@@ -468,6 +468,29 @@ const BASE_TOOLS = [
       const ms = parseDuration(String(duration));
       if (!ms) return { ok: false, message: 'Welche Dauer? z. B. System-Timer 10 Minuten.' };
       return ctx.device.setSystemTimer(Math.round(ms / 1000), formatDuration(ms));
+    }
+  },
+
+  {
+    name: 'set_alarm',
+    description: 'Stellt einen Wecker in der Android-Uhr-App (die Uhr-App zeigt ihn zur Bestätigung an). time = Uhrzeit, z. B. 7:30 oder 7 Uhr.',
+    userHint: 'Wecker stellen („Stell einen Wecker auf 7 Uhr“)',
+    parameters: obj({ time: str('Uhrzeit, z. B. 7:30, 7 Uhr oder halb sieben'), label: str('Optionale Beschriftung') }, ['time']),
+    localTriggers: [
+      { re: /wecker\b.*?\b(?:auf|um|fuer|für|gegen)\s+(.+?)[.!?]*$/i,
+        parse: (m, raw) => (/timer|countdown/i.test(raw) || !parseClockTime(m[1]) ? null : { time: m[1] }) },
+      { re: /^(?:bitte\s+)?weck(?:e)?\s+mich\s+(?:bitte\s+)?(?:morgen\s+)?(?:fr(?:ü|ue)h\s+)?(?:um|gegen|auf)\s+(.+?)[.!?]*$/i,
+        parse: (m) => (parseClockTime(m[1]) ? { time: m[1] } : null) }
+    ],
+    async execute({ time, label }, ctx) {
+      const c = parseClockTime(String(time || ''));
+      if (!c) return { ok: false, message: 'Für wie viel Uhr soll ich den Wecker stellen? Sagen Sie zum Beispiel: Wecker auf 7 Uhr.' };
+      if (!ctx.device?.setSystemAlarm) {
+        return { ok: false, unsupported: true, message: 'Wecker kann ich nur in der Android-App stellen. Im Browser kann ich Ihnen einen Timer stellen.' };
+      }
+      const hh = String(c.hour).padStart(2, '0'); const mm = String(c.minute).padStart(2, '0');
+      const r = await ctx.device.setSystemAlarm({ hour: c.hour, minute: c.minute, message: String(label || 'Jarvis Wecker').slice(0, 60) });
+      return r?.ok ? { ok: true, message: `Wecker für ${hh}:${mm} Uhr an die Uhr-App übergeben.` } : (r || { ok: false, message: 'Wecker fehlgeschlagen.' });
     }
   },
 
