@@ -378,7 +378,8 @@ with sync_playwright() as p:
         ectx.add_init_script("""
           if (window.speechSynthesis) speechSynthesis.speak = () => {};
           if (!localStorage.getItem('jarvis.persona')) {
-            const now = Date.now();
+            // Feste Testzeit wie epage.clock (nicht Date.now(): je nach Reihenfolge echte Uhrzeit → ab 22:10 rot)
+            const now = Date.parse('2026-10-20T20:10:00+02:00');
             localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Jarvis', onboarded: true }));
             localStorage.setItem('jarvis.settings', JSON.stringify({ provider: 'gemini', apiKeys: { gemini: 'test-key' }, speak: true }));
             localStorage.setItem('jarvis.briefingState', JSON.stringify({ lastActiveAt: now - 2 * 3600000, lastBriefingDay: '2026-10-20', lastBriefingAt: now - 12 * 3600000 }));
