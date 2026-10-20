@@ -28,6 +28,10 @@ cd android && ./gradlew assembleDebug
 Siehe `INSTALL-DE.md` für die Installation auf dem Galaxy A55.
 
 
+## ☀️ Morgen-Briefing im Hintergrund (ab v0.4)
+
+Paket `com.jarvis.assistant.briefing`: Vordergrund-Dienst `BriefingService` (Typ `specialUse`, nur wenn „Im Hintergrund bereithalten“ an ist) hört auf `SCREEN_OFF`/`USER_PRESENT`; Regeln in `BriefingRules` (gleiche Testfälle wie JS: `tests/fixtures/briefing-rules.json` = `app/src/test/resources/briefing-rules.json`). Tägliches Vorladen `jarvis-briefing-prefetch` (WorkManager, ca. 04:30) – unabhängig von `jarvis-update-check`. Netz nur zu `api.open-meteo.com` und `www.tagesschau.de` über `SafeHttp` mit eigener Erlaubnisliste (`BriefingPolicy`). Kanäle `ready_v1` (minimal, lautlos) und `briefing_v1` (leise). Start aus der Benachrichtigung mit Einmal-Schlüssel. Kalender über `CalendarReader` (READ_CALENDAR, nur lesen).
+
 ## 🔄 Selbst-Update (ab v0.3)
 
 Die App sucht im Hintergrund (WorkManager, auch bei geschlossener App) nach neuen

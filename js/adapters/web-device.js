@@ -62,6 +62,28 @@ export function createWebDevice({ openExternal = (url) => { window.location.href
       }
     },
 
+    /**
+     * Grober Standort fürs Wetter (kein GPS-Zwang, 30 min Cache des Browsers).
+     * interactive=false → nur wenn die Erlaubnis schon erteilt ist (kein Dialog beim Auto-Briefing).
+     */
+    async getCoarseLocation({ interactive = true } = {}) {
+      try {
+        if (!navigator.geolocation) return { ok: false, unsupported: true, message: 'Standort nicht verfügbar.' };
+        let state = 'prompt';
+        try { state = (await navigator.permissions?.query?.({ name: 'geolocation' }))?.state || 'prompt'; } catch { /* egal */ }
+        if (state === 'denied') return { ok: false, denied: true, message: 'Standort-Erlaubnis verweigert.' };
+        if (state !== 'granted' && !interactive) return { ok: false, denied: false, needsPrompt: true, message: 'Standort-Erlaubnis noch nicht erteilt.' };
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false, timeout: 8000, maximumAge: 30 * 60000
+          });
+        });
+        return { ok: true, latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      } catch (e) {
+        return { ok: false, denied: e?.code === 1, message: e?.code === 1 ? 'Standort-Erlaubnis verweigert.' : 'Standort derzeit nicht verfügbar.' };
+      }
+    },
+
     async getLocation() {
       try {
         if (!navigator.geolocation) return { ok: false, unsupported: true, message: 'Standort nicht verfügbar.' };

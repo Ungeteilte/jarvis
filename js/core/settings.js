@@ -1,4 +1,6 @@
 // KI-Anbieter-Einstellungen (reine Logik).
+import { DEFAULT_BRIEFING, normalizeBriefingConfig } from './briefing/trigger.js';
+import { RESSORT_IDS } from './briefing/news.js';
 
 export const PROVIDERS = Object.freeze({
   xai: {
@@ -42,7 +44,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   models: { xai: '', openai: '', gemini: '', custom: '' },
   customBaseUrl: '',
   speak: true,
-  wakeWord: false
+  wakeWord: false,
+  briefing: DEFAULT_BRIEFING
 });
 
 const KEY = 'settings';
@@ -54,7 +57,8 @@ export function loadSettings(store) {
     ...s,
     provider: PROVIDERS[s.provider] ? s.provider : DEFAULT_SETTINGS.provider,
     apiKeys: { ...DEFAULT_SETTINGS.apiKeys, ...(s.apiKeys || {}) },
-    models: { ...DEFAULT_SETTINGS.models, ...(s.models || {}) }
+    models: { ...DEFAULT_SETTINGS.models, ...(s.models || {}) },
+    briefing: normalizeBriefingConfig(s.briefing, RESSORT_IDS)
   };
 }
 

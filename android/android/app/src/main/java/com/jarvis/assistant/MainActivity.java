@@ -10,6 +10,8 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.jarvis.assistant.briefing.BriefingLaunch;
+import com.jarvis.assistant.briefing.BriefingScheduler;
 import com.jarvis.assistant.updater.UpdateEngine;
 import com.jarvis.assistant.updater.UpdateInstaller;
 import com.jarvis.assistant.updater.UpdateNotifier;
@@ -27,6 +29,7 @@ public class MainActivity extends BridgeActivity {
             UpdateEngine.reconcile(this);
             UpdateScheduler.ensureScheduled(this); // KEEP: bestehenden Plan behalten
         } catch (Exception ignored) { /* Updater darf den Start nie verhindern */ }
+        try { BriefingScheduler.ensure(this); } catch (Exception ignored) { /* Briefing ebenso nicht */ }
         maybeAskNotifications();
         handleIntent(getIntent());
     }
@@ -51,6 +54,12 @@ public class MainActivity extends BridgeActivity {
     public void installAfterPermission() { installAfterPermission = true; }
 
     private void handleIntent(Intent intent) {
+        if (intent != null && BriefingLaunch.ACTION.equals(intent.getAction())) {
+            BriefingLaunch.handle(this, intent);
+            intent.setAction(Intent.ACTION_MAIN);
+            intent.removeExtra(BriefingLaunch.EXTRA_NONCE);
+            return;
+        }
         if (intent == null || !UpdateNotifier.ACTION_INSTALL.equals(intent.getAction())) return;
         intent.setAction(Intent.ACTION_MAIN);
         getWindow().getDecorView().postDelayed(() -> {

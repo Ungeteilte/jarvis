@@ -43,7 +43,18 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+
+import com.jarvis.assistant.briefing.BriefingLaunch;
+import com.jarvis.assistant.briefing.BriefingNotifier;
+import com.jarvis.assistant.briefing.BriefingScheduler;
+import com.jarvis.assistant.briefing.BriefingService;
+import com.jarvis.assistant.briefing.BriefingState;
+import com.jarvis.assistant.briefing.CalendarReader;
+import android.os.PowerManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,7 +65,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-@CapacitorPlugin(name = "JarvisNative")
+@CapacitorPlugin(
+    name = "JarvisNative",
+    permissions = { @Permission(alias = "calendar", strings = { android.Manifest.permission.READ_CALENDAR }) }
+)
 public class JarvisNativePlugin extends Plugin {
     private TextToSpeech tts;
     private final AtomicBoolean ttsReady = new AtomicBoolean(false);
@@ -82,6 +96,9 @@ public class JarvisNativePlugin extends Plugin {
             try { notifyListeners("updateStatus", JSObject.fromJSONObject(st)); } catch (Exception ignored) {}
         };
         UpdateEvents.add(updateListener);
+        BriefingLaunch.setListener(() -> {
+            try { notifyListeners("briefingLaunch", new JSObject()); } catch (Exception ignored) {}
+        });
 
         tts = new TextToSpeech(ctx, status -> {
             ttsReady.set(status == TextToSpeech.SUCCESS);
@@ -94,6 +111,7 @@ public class JarvisNativePlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         if (updateListener != null) UpdateEvents.remove(updateListener);
+        BriefingLaunch.setListener(null);
         if (tts != null) {
             tts.stop();
             tts.shutdown();
@@ -479,5 +497,132 @@ public class JarvisNativePlugin extends Plugin {
         if (ContextCompat.checkSelfPermission(getContext(), android.Manifest.permission.POST_NOTIFICATIONS)
             == PackageManager.PERMISSION_GRANTED) return;
         ActivityCompat.requestPermissions(getActivity(), new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 4712);
+    }
+
+    // ---------- Morgen-Briefing ----------
+    /** Kalender (nur lesend). interactive=false fragt nie nach der Erlaubnis. */
+    @PluginMethod
+    public void getCalendarEvents(PluginCall call) {
+        if (getPermissionState("calendar") != PermissionState.GRANTED) {
+            if (call.getBoolean("interactive", false) && getActivity() != null) {
+                requestPermissionForAlias("calendar", call, "calendarPermCallback");
+                return;
+            }
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("permission", getPermissionState("calendar") == PermissionState.DENIED ? "denied" : "prompt");
+            call.resolve(r);
+            return;
+        }
+        resolveCalendar(call);
+    }
+
+    @PermissionCallback
+    private void calendarPermCallback(PluginCall call) {
+        if (getPermissionState("calendar") != PermissionState.GRANTED) {
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("permission", "denied");
+            call.resolve(r);
+            return;
+        }
+        resolveCalendar(call);
+    }
+
+    private void resolveCalendar(PluginCall call) {
+        int day = Math.max(0, Math.min(1, call.getInt("dayOffset", 0)));
+        List<CalendarReader.Item> items = CalendarReader.read(getContext(), day, System.currentTimeMillis());
+        JSObject r = new JSObject();
+        if (items == null) { r.put("ok", false); r.put("permission", "denied"); call.resolve(r); return; }
+        JSArray arr = new JSArray();
+        for (CalendarReader.Item it : items) {
+            JSObject e = new JSObject();
+            e.put("title", it.title);
+            e.put("location", it.location);
+            e.put("begin", it.begin);
+            e.put("end", it.end);
+            e.put("allDay", it.allDay);
+            arr.put(e);
+        }
+        r.put("ok", true);
+        r.put("events", arr);
+        call.resolve(r);
+    }
+
+    /** Einstellungen + Aktivität aus der App für den Hintergrund (JSON, max. 16 KB). */
+    @PluginMethod
+    public void syncBriefing(PluginCall call) {
+        try {
+            BriefingState.saveSync(getContext(), call.getString("json", "{}"));
+            if (!BriefingState.enabled(getContext()) && BriefingService.isRunning()) BriefingScheduler.cancel(getContext());
+            call.resolve(briefingStateObject());
+        } catch (Exception e) {
+            call.reject("Briefing-Daten ungültig");
+        }
+    }
+
+    @PluginMethod
+    public void getBriefingState(PluginCall call) { call.resolve(briefingStateObject()); }
+
+    @PluginMethod
+    public void setBriefingBackground(PluginCall call) {
+        Context c = getContext();
+        boolean on = Boolean.TRUE.equals(call.getBoolean("enabled", false));
+        BriefingState.setBackgroundEnabled(c, on, false);
+        try { BriefingScheduler.apply(c); } catch (Exception e) { call.reject("Planung fehlgeschlagen"); return; }
+        if (on) askNotificationPermission();
+        JSObject r = briefingStatusObject();
+        r.put("ok", true);
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void getBriefingStatus(PluginCall call) { call.resolve(briefingStatusObject()); }
+
+    /** Systemdialog „Akku-Optimierung ignorieren?“ (bzw. Liste, falls der Dialog fehlt). */
+    @PluginMethod
+    public void requestIgnoreBatteryOptimizations(PluginCall call) {
+        Context c = getContext();
+        try {
+            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + c.getPackageName()));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+        } catch (Exception e) {
+            try {
+                Intent i = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                c.startActivity(i);
+            } catch (Exception ignored) {}
+        }
+        call.resolve(briefingStatusObject());
+    }
+
+    /** Wurde die App über die Briefing-Benachrichtigung geöffnet? (einmalig) */
+    @PluginMethod
+    public void consumeBriefingLaunch(PluginCall call) {
+        boolean[] r = BriefingLaunch.consume();
+        JSObject o = new JSObject();
+        o.put("requested", r[0]);
+        o.put("trusted", r[1]);
+        call.resolve(o);
+    }
+
+    private JSObject briefingStateObject() {
+        try { return JSObject.fromJSONObject(BriefingState.toJson(getContext())); } catch (Exception e) { return new JSObject(); }
+    }
+
+    private JSObject briefingStatusObject() {
+        Context c = getContext();
+        JSObject o = briefingStateObject();
+        o.put("serviceRunning", BriefingService.isRunning());
+        o.put("notifications", BriefingNotifier.canNotify(c));
+        o.put("calendar", CalendarReader.granted(c));
+        boolean ignoring = true;
+        if (Build.VERSION.SDK_INT >= 23) {
+            PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
+            ignoring = pm != null && pm.isIgnoringBatteryOptimizations(c.getPackageName());
+        }
+        o.put("ignoringBattery", ignoring);
+        o.put("backgroundEnabled", BriefingState.backgroundEnabled(c));
+        return o;
     }
 }

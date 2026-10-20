@@ -1,6 +1,7 @@
 // Alle Handy-Werkzeuge. Jedes ruft nur über ctx.device Plattformfunktionen auf.
 import { phoneDigits, stripQuotes, after } from './triggers.js';
 import { formatDuration, parseDuration, loadNotes } from '../skills.js';
+import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 
 const str = (d) => ({ type: 'string', description: d });
 const obj = (props, required = []) => ({ type: 'object', properties: props, required });
@@ -16,7 +17,7 @@ function unsupported(feature) {
   };
 }
 
-export const TOOL_DEFINITIONS = [
+const BASE_TOOLS = [
   // ---------- Anrufen ----------
   {
     name: 'call_phone',
@@ -489,3 +490,6 @@ export const TOOL_DEFINITIONS = [
     }
   }
 ];
+
+// Morgen-Briefing: Wetter, Nachrichten, Kalender (js/core/tools/defs/briefing-tools.js)
+export const TOOL_DEFINITIONS = [...BASE_TOOLS, ...BRIEFING_TOOLS];

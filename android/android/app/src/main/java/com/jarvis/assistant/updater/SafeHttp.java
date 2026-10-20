@@ -7,22 +7,33 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 
 /**
- * HTTPS-GET mit manuellen Weiterleitungen: jede Station muss UpdatePolicy.isAllowedUrl erfüllen.
+ * HTTPS-GET mit manuellen Weiterleitungen: jede Station muss die Erlaubnis-Regel erfüllen
+ * (Updater: UpdatePolicy.isAllowedUrl; Morgen-Briefing: eigene Regel über die öffentliche Variante).
  */
-final class SafeHttp {
+public final class SafeHttp {
     private SafeHttp() {}
 
     static final String UA = "JarvisAndroidUpdater/1 (+https://github.com/Ungeteilte/jarvis)";
 
+    /** Erlaubnis-Regel für jede Station (eigenes Interface statt java.util.function – minSdk 23). */
+    public interface UrlRule { boolean allowed(String url); }
+
+    /** Updater: unverändertes Verhalten (UpdatePolicy, 15 s / 30 s). */
     static HttpURLConnection open(String url, String accept, String etag) throws IOException {
+        return open(url, accept, etag, UpdatePolicy::isAllowedUrl, UA, 15000, 30000);
+    }
+
+    /** Allgemeine Variante mit eigener Regel, eigenem User-Agent und eigenen Zeitlimits. */
+    public static HttpURLConnection open(String url, String accept, String etag, UrlRule rule, String userAgent,
+                                         int connectTimeoutMs, int readTimeoutMs) throws IOException {
         String current = url;
         for (int hop = 0; hop < 6; hop++) {
-            if (!UpdatePolicy.isAllowedUrl(current)) throw new IOException("Adresse nicht erlaubt: " + hostOf(current));
+            if (!rule.allowed(current)) throw new IOException("Adresse nicht erlaubt: " + hostOf(current));
             HttpURLConnection c = (HttpURLConnection) new URL(current).openConnection();
             c.setInstanceFollowRedirects(false);
-            c.setConnectTimeout(15000);
-            c.setReadTimeout(30000);
-            c.setRequestProperty("User-Agent", UA);
+            c.setConnectTimeout(connectTimeoutMs);
+            c.setReadTimeout(readTimeoutMs);
+            c.setRequestProperty("User-Agent", userAgent);
             if (accept != null) c.setRequestProperty("Accept", accept);
             if (etag != null && hop == 0) c.setRequestProperty("If-None-Match", etag);
             int code = c.getResponseCode();
@@ -38,7 +49,7 @@ final class SafeHttp {
         throw new IOException("Zu viele Weiterleitungen");
     }
 
-    static String readText(HttpURLConnection c, long maxBytes) throws IOException {
+    public static String readText(HttpURLConnection c, long maxBytes) throws IOException {
         try (InputStream in = c.getInputStream()) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             byte[] buf = new byte[16 * 1024];
