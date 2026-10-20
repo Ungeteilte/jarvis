@@ -55,6 +55,18 @@ Jetzt:
   Je nach Gerät/Spracherkennungs-App kommt der Ton über einen anderen Stream – dann bleibt er hörbar.
   Der Mikrofon-Knopf behält den Ton (Rückmeldung „ich höre zu“).
 
+## 🧠 Gedächtnis & Backup (ab v0.8)
+
+Das Gedächtnis (`jarvis.memory`) liegt wie alle `jarvis.*`-Schlüssel in EncryptedSharedPreferences (`secureGet/secureSet`,
+Ladeliste in `native-web/native-storage.js`). **Backup ist aus:** `android:allowBackup="false"`, dazu
+`res/xml/data_extraction_rules.xml` (Android 12+: Cloud-Backup **und** Gerät-zu-Gerät-Übertragung schließen alle Bereiche aus)
+und `res/xml/backup_rules.xml` (Android 6–11). Grund: Gedächtnis, Schlüssel und Verlauf sollen nicht zu Google wandern, und
+EncryptedSharedPreferences lassen sich nach einer Wiederherstellung ohnehin nicht entschlüsseln (Schlüssel im Keystore wird
+nicht mitgesichert). Folge: Bei einem Handywechsel Gedächtnis über *Einstellungen → Gedächtnis → Exportieren* mitnehmen,
+API-Schlüssel neu eintragen. App-Updates sind davon nicht betroffen (Daten bleiben erhalten).
+
+Websites/Links: `JarvisNative.openUrl` wird nur nach bestätigter Karte aufgerufen (siehe README, „Websites“).
+
 ## ☀️ Morgen-Briefing im Hintergrund (ab v0.4)
 
 Paket `com.jarvis.assistant.briefing`: Vordergrund-Dienst `BriefingService` (Typ `specialUse`, nur wenn „Im Hintergrund bereithalten“ an ist) hört auf `SCREEN_OFF`/`USER_PRESENT`; Regeln in `BriefingRules` (gleiche Testfälle wie JS: `tests/fixtures/briefing-rules.json` = `app/src/test/resources/briefing-rules.json`). Tägliches Vorladen `jarvis-briefing-prefetch` (WorkManager, ca. 04:30) – unabhängig von `jarvis-update-check`. Netz nur zu `api.open-meteo.com` und `www.tagesschau.de` über `SafeHttp` mit eigener Erlaubnisliste (`BriefingPolicy`). Kanäle `ready_v1` (minimal, lautlos) und `briefing_v1` (leise). Start aus der Benachrichtigung mit Einmal-Schlüssel. Kalender über `CalendarReader` (READ_CALENDAR, nur lesen).
