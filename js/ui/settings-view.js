@@ -11,7 +11,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     provider: $('#set-provider'), baseurl: $('#set-baseurl'), rowBase: $('#row-baseurl'),
     apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
     name: $('#set-name'), voice: $('#set-voice'), rate: $('#set-rate'), pitch: $('#set-pitch'),
-    outRate: $('#out-rate'), outPitch: $('#out-pitch'), speak: $('#set-speak'), wake: $('#set-wake'),
+    outRate: $('#out-rate'), outPitch: $('#out-pitch'), speak: $('#set-speak'), wake: $('#set-wake'), wakeMute: $('#set-wake-mute'),
     testResult: $('#test-result'), notes: $('#notes-view')
   };
   // Formularwerte pro Anbieter zwischenspeichern, damit Umschalten nichts verliert
@@ -93,6 +93,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     f.pitch.value = p.pitch; f.outPitch.textContent = (+p.pitch).toFixed(1);
     f.speak.checked = draft.speak;
     f.wake.checked = draft.wakeWord;
+    f.wakeMute.checked = draft.wakeMuteBeep;
     f.notes.classList.add('hidden');
     fillBriefing(draft.briefing);
     fillEvening(draft.evening);
@@ -295,6 +296,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       customBaseUrl: draft.customBaseUrl,
       speak: f.speak.checked,
       wakeWord: f.wake.checked,
+      wakeMuteBeep: f.wakeMute.checked,
       briefing: readBriefing(),
       evening: readEvening()
     });

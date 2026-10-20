@@ -3,13 +3,24 @@
 //
 // Ablauf: dauerhaft zuhören → "Hey <Name> <Befehl>" → Befehl ausführen.
 // Nur "Hey <Name>" → 8 Sekunden lang wird der nächste Satz als Befehl genommen.
+//
+// Pausen haben GRÜNDE (z. B. 'tts', 'turn', 'mic', 'hidden', 'bg-tts'): Zugehört wird erst
+// wieder, wenn ALLE Gründe aufgehoben sind – so kann eine verschachtelte Sprachausgabe das
+// Mikrofon nicht mitten in einer anderen Ausgabe wieder öffnen (Jarvis hört sich sonst selbst).
+// resume(grund, { delayMs }) wartet kurz (Nachhall der eigenen Stimme) und startet höchstens einmal.
 import { createWakeMatcher } from './wakeword.js';
 
-export function createWakeController({ stt, getName, onWake, onCommand, onState, onError, commandWindowMs = 8000 }) {
+export function createWakeController({
+  stt, getName, onWake, onCommand, onState, onError, commandWindowMs = 8000,
+  setTimer = (fn, ms) => setTimeout(fn, ms), clearTimer = (t) => clearTimeout(t)
+}) {
   let session = null;
   let enabled = false;
-  let paused = false;
+  const reasons = new Set();
+  let resumeTimer = null;
   let awaitingUntil = 0;
+  let awaitTimer = null;
+  let starts = 0;
   let matcher = createWakeMatcher(getName());
   let matcherName = getName();
 
@@ -35,31 +46,57 @@ export function createWakeController({ stt, getName, onWake, onCommand, onState,
     } else {
       awaitingUntil = Date.now() + commandWindowMs;
       onWake?.();
-      setTimeout(() => { if (awaitingUntil && Date.now() >= awaitingUntil) { awaitingUntil = 0; onState?.('standby'); } }, commandWindowMs + 50);
+      if (awaitTimer) clearTimer(awaitTimer);
+      awaitTimer = setTimer(() => { awaitTimer = null; if (awaitingUntil && Date.now() >= awaitingUntil) { awaitingUntil = 0; onState?.('standby'); } }, commandWindowMs + 50);
     }
   }
 
+  const cancelResume = () => { if (resumeTimer) { clearTimer(resumeTimer); resumeTimer = null; } };
+
   function start() {
-    if (session || !enabled || paused) return;
-    session = stt.startContinuous({
+    cancelResume();
+    if (session || !enabled || reasons.size) return;
+    starts++;
+    let mine = null;
+    mine = stt.startContinuous({
       onFinal: handleFinal,
       onState: (s) => onState?.(s === 'listening' ? (awaitingUntil ? 'awaiting' : 'standby') : s),
-      onError: (e) => { enabled = false; session = null; onError?.(e); }
+      onError: (e) => {
+        // Adapter hat aufgegeben: Sitzung wirklich beenden (keine verwaiste Neustart-Schleife)
+        try { mine?.stop(); } catch { /* egal */ }
+        if (session === mine) session = null;
+        enabled = false;
+        onError?.(e);
+      }
     });
+    if (enabled) session = mine; // onError kann synchron gekommen sein
   }
   function stop() {
-    session?.stop();
+    cancelResume();
+    const s = session;
     session = null;
+    try { s?.stop(); } catch { /* egal */ }
   }
 
   return {
     get enabled() { return enabled; },
     get awaiting() { return Date.now() < awaitingUntil; },
+    get listening() { return Boolean(session); },
+    get paused() { return reasons.size > 0; },
+    get pauseReasons() { return [...reasons]; },
+    get starts() { return starts; },
     enable() { enabled = true; start(); },
     disable() { enabled = false; awaitingUntil = 0; stop(); },
     /** z. B. während Jarvis spricht oder der Mikrofon-Knopf benutzt wird */
-    pause() { paused = true; stop(); },
-    resume() { paused = false; start(); },
+    pause(reason = 'manual') { reasons.add(reason); stop(); },
+    /** Grund aufheben; erst wenn keiner mehr übrig ist, nach delayMs wieder zuhören. */
+    resume(reason = 'manual', { delayMs = 0 } = {}) {
+      reasons.delete(reason);
+      if (reasons.size || !enabled || session) return;
+      cancelResume();
+      if (delayMs > 0) resumeTimer = setTimer(() => { resumeTimer = null; start(); }, delayMs);
+      else start();
+    },
     /** Für Tests: einen erkannten Satz direkt einspeisen */
     feed: handleFinal
   };
