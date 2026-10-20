@@ -4,6 +4,8 @@ import { PROVIDERS, loadSettings, saveSettings, resolveProvider } from '../core/
 import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from '../core/persona.js';
 import { askAI, listModels } from '../core/ai.js';
 import { loadNotes } from '../core/skills.js';
+import { loadMemory, addMemory, updateMemory, removeMemory, clearMemory, migrateNotes, exportMemory, importMemory, KATEGORIE_LABELS } from '../core/memory.js';
+import { PREF_OPTIONS, PREF_LABELS } from '../core/prefs.js';
 import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig } from '../core/briefing/index.js';
 
 export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing, onTestEvening }) {
@@ -95,6 +97,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     f.wake.checked = draft.wakeWord;
     f.wakeMute.checked = draft.wakeMuteBeep;
     f.notes.classList.add('hidden');
+    fillMemory(draft);
     fillBriefing(draft.briefing);
     fillEvening(draft.evening);
     refreshVoices();
@@ -298,14 +301,131 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       wakeWord: f.wake.checked,
       wakeMuteBeep: f.wakeMute.checked,
       briefing: readBriefing(),
-      evening: readEvening()
+      evening: readEvening(),
+      memoryToAI: m.ai.checked,
+      prefs: { antwortlaenge: m.len.value, anrede: m.anrede.value, humor: m.humor.value }
     });
     const persona = savePersona(store, currentPersonaFromForm());
     toast('Gespeichert.');
     onSaved({ settings, persona });
   });
 
+  // ---------- Gedächtnis ----------
+  const m = {
+    ai: $('#set-mem-ai'), add: $('#mem-new'), status: $('#mem-status'), list: $('#mem-list'),
+    importText: $('#mem-import'),
+    len: $('#set-pref-len'), anrede: $('#set-pref-anrede'), humor: $('#set-pref-humor')
+  };
+  const memStatus = (t) => { m.status.textContent = t || ''; };
+  function fillPrefSelect(sel, key, value) {
+    sel.textContent = '';
+    for (const v of PREF_OPTIONS[key]) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = PREF_LABELS[key][v];
+      sel.append(o);
+    }
+    sel.value = value;
+  }
+  function memButton(label, cls, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = `btn ${cls || ''}`.trim(); b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  /** Liste neu zeichnen – nur textContent, nie HTML. */
+  function renderMemory() {
+    const items = [...loadMemory(store).items].sort((a, b) =>
+      (b.angeheftet - a.angeheftet) || String(b.geaendert).localeCompare(String(a.geaendert)));
+    m.list.textContent = '';
+    if (!items.length) {
+      const li = document.createElement('li');
+      li.className = 'hint';
+      li.textContent = 'Noch leer.';
+      m.list.append(li);
+    }
+    for (const it of items) {
+      const li = document.createElement('li');
+      li.className = 'mem-item';
+      li.dataset.id = it.id;
+      const text = document.createElement('div');
+      text.className = 'mem-text';
+      const t = document.createElement('span');
+      t.textContent = (it.angeheftet ? '📌 ' : '') + it.text;
+      const meta = document.createElement('div');
+      meta.className = 'mem-meta';
+      meta.textContent = `${KATEGORIE_LABELS[it.kategorie] || it.kategorie} · ${new Date(it.erstellt).toLocaleDateString('de-DE')}`;
+      text.append(t, meta);
+      const edit = memButton('Bearbeiten', 'mem-btn-edit', () => {
+        const inp = document.createElement('input');
+        inp.type = 'text'; inp.maxLength = 200; inp.value = it.text; inp.className = 'mem-edit';
+        const save = memButton('OK', 'primary mem-btn-save', () => {
+          const r = updateMemory(store, it.id, { text: inp.value });
+          memStatus(r.ok ? 'Geändert.' : r.message);
+          renderMemory();
+        });
+        li.textContent = '';
+        li.append(inp, save, memButton('Abbrechen', '', renderMemory));
+        inp.focus();
+      });
+      const pin = memButton(it.angeheftet ? 'Lösen' : 'Anheften', 'mem-btn-pin', () => {
+        updateMemory(store, it.id, { angeheftet: !it.angeheftet });
+        renderMemory();
+      });
+      const del = memButton('Löschen', 'danger mem-btn-del', () => {
+        removeMemory(store, it.id);
+        memStatus(`Gelöscht: ${it.text}`);
+        renderMemory();
+      });
+      li.append(text, edit, pin, del);
+      m.list.append(li);
+    }
+  }
+  function fillMemory(st) {
+    m.ai.checked = st.memoryToAI;
+    fillPrefSelect(m.len, 'antwortlaenge', st.prefs.antwortlaenge);
+    fillPrefSelect(m.anrede, 'anrede', st.prefs.anrede);
+    fillPrefSelect(m.humor, 'humor', st.prefs.humor);
+    memStatus('');
+    renderMemory();
+  }
+  const addFromField = () => {
+    const r = addMemory(store, m.add.value, { quelle: 'einstellungen' });
+    memStatus(r.message);
+    if (r.ok) m.add.value = '';
+    renderMemory();
+  };
+  $('#btn-mem-add').addEventListener('click', addFromField);
+  m.add.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); addFromField(); } });
+  $('#btn-mem-migrate').addEventListener('click', () => {
+    const n = loadNotes(store).length;
+    if (!n) { memStatus('Es gibt keine Notizen zum Übernehmen.'); return; }
+    if (!confirm(`${n} Notiz(en) ins Gedächtnis übernehmen? Übernommene Notizen werden aus den Notizen entfernt.`)) return;
+    const r = migrateNotes(store);
+    memStatus(`${r.moved} übernommen${r.skipped ? `, ${r.skipped} blieben Notizen (doppelt, zu lang oder sensibel)` : ''}.`);
+    renderMemory();
+  });
+  $('#btn-mem-export').addEventListener('click', async () => {
+    const json = exportMemory(store);
+    const r = device?.copyText ? await device.copyText(json) : { ok: false };
+    if (r?.ok) memStatus('In die Zwischenablage kopiert.');
+    else { m.importText.value = json; $('#mem-import-box').open = true; memStatus('Kopieren ging nicht – der Export steht im Feld unten.'); }
+  });
+  $('#btn-mem-import').addEventListener('click', () => {
+    const r = importMemory(store, m.importText.value);
+    memStatus(r.message);
+    if (r.ok) m.importText.value = '';
+    renderMemory();
+  });
+  $('#btn-mem-clear').addEventListener('click', () => {
+    const n = loadMemory(store).items.length;
+    if (!n) { memStatus('Das Gedächtnis ist schon leer.'); return; }
+    if (!confirm(`Alle ${n} Einträge im Gedächtnis löschen? Notizen bleiben erhalten.`)) return;
+    clearMemory(store);
+    memStatus('Gedächtnis gelöscht.');
+    renderMemory();
+  });
+
   tts.onVoicesChanged(() => { if (!$('#view-settings').classList.contains('hidden')) refreshVoices(); });
 
-  return { fill };
+  return { fill, refreshMemory: renderMemory };
 }
