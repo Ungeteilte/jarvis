@@ -13,7 +13,8 @@ const PREFIX_HINT = 'jarvis.';
 export async function hydrateNativeStorage() {
   const data = new Map();
   const keys = [
-    'jarvis.persona', 'jarvis.settings', 'jarvis.history', 'jarvis.notes', 'jarvis.timers', 'jarvis.briefingState'
+    'jarvis.persona', 'jarvis.settings', 'jarvis.history', 'jarvis.notes', 'jarvis.timers', 'jarvis.briefingState',
+    'jarvis.memory'
   ];
   try {
     if (Prefs()?.keys) {
