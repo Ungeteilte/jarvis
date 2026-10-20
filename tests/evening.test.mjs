@@ -157,7 +157,7 @@ test('set_alarm: Android übergibt an die Uhr-App, Web erklärt freundlich', asy
   const device = { setSystemAlarm: async (a) => { calls.push(a); return { ok: true }; } };
   const a = setup({ device });
   const r = await a.assistant.process('Stell einen Wecker auf 6:45');
-  assert.match(r.text, /06:45 Uhr/);
+  assert.match(r.text, /Wecker ist auf 6:45 Uhr gestellt/);
   assert.deepEqual(calls, [{ hour: 6, minute: 45, message: 'Jarvis Wecker' }]);
   const w = setup();
   const r2 = await w.assistant.process('Stell einen Wecker auf 7 Uhr');
@@ -254,7 +254,7 @@ test('Nach dem Rückblick: „7 Uhr“ stellt den Wecker, „Ja“ fragt nach de
   let r = await a.assistant.process('Ja gerne');
   assert.match(r.text, /Für wie viel Uhr/);
   r = await a.assistant.process('halb sieben');
-  assert.match(r.text, /06:30 Uhr/);
+  assert.match(r.text, /6:30 Uhr gestellt/);
   assert.deepEqual(alarms.at(-1), { hour: 6, minute: 30, message: 'Jarvis Wecker' });
   r = await a.assistant.process('Nein danke');
   assert.match(r.text, /angenehmen Abend/);

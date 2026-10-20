@@ -1,7 +1,7 @@
 // Der "Kopf": lokale Skills → lokale Tool-Trigger → KI mit Tool-Schleife.
 // Komplett browser-frei – UI und Sprachausgabe hängen sich nur an.
 
-import { handleSkill, loadNotes, parseClockTime } from './skills.js';
+import { handleSkill, loadNotes, parseClockTime, parseAlarmTime } from './skills.js';
 import { buildSystemPrompt } from './prompt.js';
 import { handleMemoryCommand } from './memory-commands.js';
 import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
@@ -28,7 +28,8 @@ export const FOLLOW_UP_TOOLS = new Set([
   'call_phone', 'send_sms', 'send_whatsapp', 'send_email', 'navigate', 'open_youtube', 'open_spotify',
   'open_website', 'search_web', 'get_location', 'get_battery', 'list_notes', 'list_memory', 'list_capabilities',
   'get_weather', 'get_news', 'get_calendar_events',
-  // Wecker: die Uhr-App zeigt ihn vor dem Speichern an (SKIP_UI=false) → vom Nutzer bestätigt
+  // Wecker: wird im Hintergrund gestellt (SKIP_UI) – kommt der Aufruf von der KI, während fremde Texte
+  // im Kontext stehen, zeigt set_alarm vorher eine Ja/Nein-Karte (ctx.viaAI + ctx.turn.external)
   'set_alarm'
 ]);
 
@@ -42,6 +43,11 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
   // Offene Ja/Nein-Karte (für gesprochenes „Ja“/„Nein“) und zuletzt Gemerktes (für „Vergiss das“)
   let pending = null;
   let lastAdded = null;
+  // „Stell mir einen Wecker“ ohne Uhrzeit → Jarvis fragt nach; die nächste Antwort („7 Uhr“) stellt ihn
+  let pendingAlarm = null;
+  const askedForAlarmTime = (results) => {
+    if ((results || []).some((t) => t.name === 'set_alarm' && t.result?.needsTime)) pendingAlarm = { at: now().getTime() };
+  };
 
   function add(role, text, meta = {}) {
     const msg = { id: newId(), role, text, at: now().toISOString(), ...meta };
@@ -90,6 +96,10 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         const n = clearMemory(store);
         lastAdded = null;
         return add('assistant', `Erledigt. ${n === 1 ? 'Ein Eintrag ist' : n + ' Einträge sind'} gelöscht. Notizen bleiben erhalten.`, { source: 'skill', memoryChanged: true });
+      }
+      case 'setAlarm': {
+        const r = await tools.run('set_alarm', { time: `${action.hour}:${String(action.minute).padStart(2, '0')}`, label: action.label }, ctx());
+        return add('assistant', r.message, { source: 'tool', tool: 'set_alarm', error: r.ok === false && !r.unsupported ? true : undefined, unsupported: r.unsupported || undefined });
       }
       default:
         return add('assistant', 'Diese Aktion kann ich leider nicht ausführen.', { source: 'system' });
@@ -218,6 +228,20 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       };
       const c = ctx();
 
+      // Antwort auf „Für wie viel Uhr soll ich den Wecker stellen?“ (2 Minuten gültig)
+      if (pendingAlarm) {
+        const fresh = now().getTime() - pendingAlarm.at <= CONFIRM_TTL_MS;
+        pendingAlarm = null;
+        if (fresh && (voiceAnswer(input) === 'no' || /^(?:doch nicht|kein wecker|vergiss es)\b/i.test(input))) {
+          return add('assistant', 'Alles klar, kein Wecker.', { source: 'system' });
+        }
+        if (fresh && input.length <= 40 && parseAlarmTime(input)) {
+          const r = await tools.run('set_alarm', { time: input }, c);
+          if (r.needsTime) pendingAlarm = { at: now().getTime() };
+          return add('assistant', r.message, { source: 'tool', tool: 'set_alarm', error: r.ok === false && !r.unsupported && !r.needsTime ? true : undefined, unsupported: r.unsupported || undefined });
+        }
+      }
+
       // 0) Morgen-Briefing: Einstellungsbefehle und „Guten Morgen“ / „Was steht heute an?“
       const cmd = handleBriefingCommand(input, store);
       if (cmd) return add('assistant', cmd, { source: 'skill', settingsChanged: true });
@@ -250,7 +274,8 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         const meta = { source: 'tool', tool: hit.name };
         if (hit.result?.needsConfirm && hit.result.confirm) meta.confirm = hit.result.confirm;
         if (hit.result?.unsupported) meta.unsupported = true;
-        if (hit.result && hit.result.ok === false && !hit.result.needsConfirm) meta.error = !hit.result.unsupported;
+        if (hit.result && hit.result.ok === false && !hit.result.needsConfirm && !hit.result.needsTime) meta.error = !hit.result.unsupported;
+        askedForAlarmTime([{ name: hit.name, result: hit.result }]);
         return add('assistant', hit.text, meta);
       }
 
@@ -292,6 +317,7 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         });
         emitEvent(makeDeltaEvent({ replyTo: userMsg.id, seq: seq++, done: true }));
         const meta = { source: 'ai', toolResults: out.toolResults };
+        askedForAlarmTime(out.toolResults);
         if (out.confirm) meta.confirm = out.confirm;
         return add('assistant', out.text || 'Fertig.', meta);
       } catch (e) {

@@ -95,6 +95,7 @@ FAKE = r"""
     },
     sttCancel: () => { st.cancels++; st.active = null; return lat({}); },
     openUrl: ({ url }) => { window.__nat.opened.push(url); return lat({}); },
+    setAlarm: (a) => { (window.__nat.alarms = window.__nat.alarms || []).push(a); return CFG.alarmFail ? lat(null).then(() => { throw new Error('Keine Uhr-App gefunden, die Wecker annimmt.'); }) : lat({ ok: true }); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
@@ -261,7 +262,21 @@ with sync_playwright() as pw:
           "example.com" in ctext and "https://example.com/seite?x=1" in ctext and page.evaluate("window.__nat.opened") == [])
     nask("ja")
     check("Website: nach „Ja“ genau einmal JarvisNative.openUrl", page.evaluate("window.__nat.opened") == ["https://example.com/seite?x=1"])
-    check("Gedächtnis/Website: keine JS-Fehler", not errs)
+    # Wecker (Fehler bis v0.7: Jarvis verschwand, kein Wecker): ohne Uhrzeit nachfragen, dann stellen, App bleibt sichtbar
+    r = nask("Stell mir einen Wecker")
+    check("Wecker: ohne Uhrzeit fragt Jarvis nach (kein Timer)", "Für wie viel Uhr" in r and not page.evaluate("window.__nat.alarms || []"))
+    r = nask("halb acht")
+    check("Wecker: nach der Antwort JarvisNative.setAlarm mit 7:30, Ansage, Jarvis bleibt sichtbar",
+          page.evaluate("window.__nat.alarms") == [{"hour": 7, "minute": 30, "message": "Jarvis Wecker"}]
+          and "7:30 Uhr gestellt" in r and page.is_visible("#input")
+          and any("7:30 Uhr gestellt" in t for t in page.evaluate("window.__nat.speak")))
+    check("Gedächtnis/Website/Wecker: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, alarmFail=True)
+    page.wait_for_timeout(400)
+    r = nask("Stell einen Wecker auf 6 Uhr")
+    check("Wecker: Fehler der Uhr-App wird klar angesagt", "konnte ich leider nicht stellen" in r and "Keine Uhr-App" in r)
     errors.extend(errs)
     b.close()
 

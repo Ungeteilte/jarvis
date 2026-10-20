@@ -1,6 +1,6 @@
 // Alle Handy-Werkzeuge. Jedes ruft nur über ctx.device Plattformfunktionen auf.
 import { phoneDigits, stripQuotes, after } from './triggers.js';
-import { formatDuration, parseDuration, loadNotes, parseClockTime } from '../skills.js';
+import { formatDuration, parseDuration, loadNotes, parseClockTime, parseAlarmTime } from '../skills.js';
 import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 import { MEMORY_TOOLS } from './defs/memory-tools.js';
 import { checkWebUrl, websiteConfirm } from '../url-check.js';
@@ -18,6 +18,11 @@ function unsupported(feature) {
     unsupported: true,
     message: `Verzeihung, ${feature} steht in der Web-App leider nicht zur Verfügung. Das kommt mit der späteren Android-App.`
   };
+}
+
+/** „7 Uhr“, „6:30 Uhr“ – so, wie es vorgelesen gut klingt. */
+export function alarmSpoken({ hour, minute }) {
+  return minute ? `${hour}:${String(minute).padStart(2, '0')} Uhr` : `${hour} Uhr`;
 }
 
 const BASE_TOOLS = [
@@ -495,24 +500,47 @@ const BASE_TOOLS = [
 
   {
     name: 'set_alarm',
-    description: 'Stellt einen Wecker in der Android-Uhr-App (die Uhr-App zeigt ihn zur Bestätigung an). time = Uhrzeit, z. B. 7:30 oder 7 Uhr.',
+    description: 'Stellt einen Wecker in der Android-Uhr-App (im Hintergrund, Jarvis bleibt offen). time = Uhrzeit, z. B. 7:30 oder 7 Uhr. ' +
+      'Ohne Uhrzeit fragt Jarvis nach.',
     userHint: 'Wecker stellen („Stell einen Wecker auf 7 Uhr“)',
     parameters: obj({ time: str('Uhrzeit, z. B. 7:30, 7 Uhr oder halb sieben'), label: str('Optionale Beschriftung') }, ['time']),
     localTriggers: [
       { re: /wecker\b.*?\b(?:auf|um|fuer|für|gegen)\s+(.+?)[.!?]*$/i,
-        parse: (m, raw) => (/timer|countdown/i.test(raw) || !parseClockTime(m[1]) ? null : { time: m[1] }) },
+        parse: (m, raw) => (/timer|countdown/i.test(raw) || !parseAlarmTime(m[1]) ? null : { time: m[1] }) },
       { re: /^(?:bitte\s+)?weck(?:e)?\s+mich\s+(?:bitte\s+)?(?:morgen\s+)?(?:fr(?:ü|ue)h\s+)?(?:um|gegen|auf)\s+(.+?)[.!?]*$/i,
-        parse: (m) => (parseClockTime(m[1]) ? { time: m[1] } : null) }
+        parse: (m) => (parseAlarmTime(m[1]) ? { time: m[1] } : null) },
+      // „Stell mir einen Wecker“ (ohne oder mit Uhrzeit ohne Präposition) → set_alarm fragt ggf. nach
+      { re: /^(?:bitte\s+)?(?:kannst du\s+(?:mir\s+)?)?(?:stell|stelle|mach|mache|setz|setze|erstell|erstelle)\s+(?:mir\s+)?(?:bitte\s+)?(?:einen\s+|den\s+|nen\s+)?wecker\b(.*?)[.!?]*$/i,
+        parse: (m, raw) => (/timer|countdown/i.test(raw) || parseDuration(raw) ? null : { time: m[1].replace(/^\s*(?:bitte\s+)?/, '').trim() }) },
+      { re: /^(?:bitte\s+)?weck(?:e)?\s+mich(?:\s+bitte)?[.!?]*$/i, parse: () => ({ time: '' }) }
     ],
     async execute({ time, label }, ctx) {
-      const c = parseClockTime(String(time || ''));
-      if (!c) return { ok: false, message: 'Für wie viel Uhr soll ich den Wecker stellen? Sagen Sie zum Beispiel: Wecker auf 7 Uhr.' };
+      const c = parseAlarmTime(String(time || ''));
+      if (!c) {
+        // needsTime: Der Assistent merkt sich die Frage – die nächste Antwort („7 Uhr“, „halb acht“) stellt den Wecker.
+        return { ok: false, needsTime: true, message: 'Für wie viel Uhr soll ich den Wecker stellen? Sagen Sie zum Beispiel „7 Uhr“ oder „halb acht“.' };
+      }
       if (!ctx.device?.setSystemAlarm) {
         return { ok: false, unsupported: true, message: 'Wecker kann ich nur in der Android-App stellen. Im Browser kann ich Ihnen einen Timer stellen.' };
       }
-      const hh = String(c.hour).padStart(2, '0'); const mm = String(c.minute).padStart(2, '0');
-      const r = await ctx.device.setSystemAlarm({ hour: c.hour, minute: c.minute, message: String(label || 'Jarvis Wecker').slice(0, 60) });
-      return r?.ok ? { ok: true, message: `Wecker für ${hh}:${mm} Uhr an die Uhr-App übergeben.` } : (r || { ok: false, message: 'Wecker fehlgeschlagen.' });
+      const spoken = alarmSpoken(c);
+      const msg = String(label || 'Jarvis Wecker').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Jarvis Wecker';
+      // Hat die KI den Wecker vorgeschlagen, während fremde Texte (Nachrichten/Termine) im Kontext stehen,
+      // fragt Jarvis vorher (der Wecker wird im Hintergrund ohne Uhr-App-Ansicht gestellt).
+      if (ctx.viaAI && ctx.turn?.external && !ctx.confirmed) {
+        return {
+          ok: true, needsConfirm: true,
+          message: `Soll ich einen Wecker für ${spoken} stellen? Tippen Sie auf Ja oder sagen Sie „Ja“.`,
+          confirm: { title: `Wecker für ${spoken} stellen?`, detail: msg, action: { type: 'setAlarm', hour: c.hour, minute: c.minute, label: msg } }
+        };
+      }
+      const r = await ctx.device.setSystemAlarm({ hour: c.hour, minute: c.minute, message: msg });
+      if (r?.ok) return { ok: true, alarm: c, message: `Sehr wohl, der Wecker ist auf ${spoken} gestellt.` };
+      return {
+        ok: false,
+        message: `Den Wecker für ${spoken} konnte ich leider nicht stellen${r?.message ? ` (${String(r.message).replace(/[.\s]+$/, '')})` : ''}. ` +
+          'Bitte stellen Sie ihn direkt in der Uhr-App.'
+      };
     }
   },
 

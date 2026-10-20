@@ -69,6 +69,25 @@ const hourTok = (w) => (/^\d{1,2}$/.test(w) ? Number(w) : HOUR_WORDS[w] ?? null)
  * Uhrzeit aus gesprochenem Text: „7 Uhr“, „7:30“, „7.30 Uhr“, „7 Uhr 15“, „halb sieben“,
  * „viertel nach 7“, „viertel vor acht“. → { hour, minute } oder null.
  */
+/**
+ * Uhrzeit für einen Wecker: wie parseClockTime, zusätzlich eine nackte Stunde, wenn der ganze Text
+ * nur eine Zeitangabe ist („7“, „um 7“, „sieben“, „morgen früh um 6“, „7 30“). → { hour, minute } oder null.
+ */
+export function parseAlarmTime(text) {
+  const c = parseClockTime(text);
+  if (c) return c;
+  const t = normalizeText(String(text || ''))
+    .replace(/\b(?:bitte|morgen|heute|frueh|morgens|abends|nachts|am|fuer|für|um|auf|gegen|ab)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const m = t.match(/^(\w+)(?: (\d{2}))?$/);
+  if (!m || hourTok(m[1]) === null) return null;
+  let h = hourTok(m[1]);
+  const min = m[2] ? Number(m[2]) : 0;
+  // „abends um 7“ → 19 Uhr
+  if (/\babends?\b|\bnachmittags?\b/.test(normalizeText(text)) && h >= 1 && h <= 11) h += 12;
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59 ? { hour: h, minute: min } : null;
+}
+
 export function parseClockTime(text) {
   const t = normalizeText(String(text || '').replace(/(\d)\s*[:.]\s*(\d{2})(?!\d)/g, '$1 uhr $2'));
   const ok = (h, m) => (h >= 0 && h <= 23 && m >= 0 && m <= 59 ? { hour: h, minute: m } : null);
@@ -117,8 +136,9 @@ export function handleSkill(text, ctx) {
 
   // --- Timer ---
   if (/timer|wecker|countdown/.test(t)) {
-    // „Wecker auf 7 Uhr“ ist ein Wecker in der Uhr-App (Werkzeug set_alarm), kein Timer.
-    if (/wecker/.test(t) && !/timer|countdown/.test(t) && parseClockTime(raw)) return null;
+    // „Wecker …“ ist ein Wecker in der Uhr-App (Werkzeug set_alarm), kein Timer – auch ohne Uhrzeit
+    // (dann fragt set_alarm nach). Nur „Wecker auf 5 Minuten“ (eine Dauer) bleibt ein Timer.
+    if (/wecker/.test(t) && !/timer|countdown/.test(t) && !parseDuration(raw)) return null;
     if (/(stopp|stop|abbrech|loesch|beend|aus\b|cancel)/.test(t)) {
       const n = ctx.timers.cancelAll();
       return n ? `${n === 1 ? 'Der Timer wurde' : n + ' Timer wurden'} gestoppt.` : 'Es läuft derzeit kein Timer.';

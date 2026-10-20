@@ -95,6 +95,13 @@
         <intent>
             <action android:name="android.intent.action.DIAL" />
         </intent>
+        <!-- Wecker/Timer in der Uhr-App (resolveActivity vor dem Stellen) -->
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SET_TIMER" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />

@@ -50,6 +50,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import com.jarvis.assistant.briefing.BackgroundSpeech;
 import com.jarvis.assistant.briefing.BriefingLaunch;
+import com.jarvis.assistant.alarm.AlarmSpec;
 import com.jarvis.assistant.stt.BeepMuter;
 import com.jarvis.assistant.stt.NativeRecognizer;
 import com.jarvis.assistant.briefing.BriefingNotifier;
@@ -434,22 +435,43 @@ public class JarvisNativePlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /**
+     * Wecker in der Uhr-App stellen – im Hintergrund (EXTRA_SKIP_UI=true), damit Jarvis offen bleibt.
+     * Fehler werden mit klarer Meldung abgelehnt (JS sagt sie an), nie still verschluckt.
+     */
     @PluginMethod
     public void setAlarm(PluginCall call) {
-        int hour = call.getInt("hour", 7);
-        int minute = call.getInt("minute", 0);
-        String message = call.getString("message", "Jarvis Wecker");
+        AlarmSpec spec;
+        try {
+            spec = AlarmSpec.of(call.getInt("hour"), call.getInt("minute"), call.getString("message"));
+        } catch (IllegalArgumentException e) {
+            call.reject(e.getMessage());
+            return;
+        }
         Intent i = new Intent(AlarmClock.ACTION_SET_ALARM);
-        i.putExtra(AlarmClock.EXTRA_HOUR, hour);
-        i.putExtra(AlarmClock.EXTRA_MINUTES, minute);
-        i.putExtra(AlarmClock.EXTRA_MESSAGE, message);
-        i.putExtra(AlarmClock.EXTRA_SKIP_UI, false);
+        i.putExtra(AlarmClock.EXTRA_HOUR, spec.hour);
+        i.putExtra(AlarmClock.EXTRA_MINUTES, spec.minute);
+        i.putExtra(AlarmClock.EXTRA_MESSAGE, spec.message);
+        i.putExtra(AlarmClock.EXTRA_SKIP_UI, true);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // Android 11+: braucht <queries> für SET_ALARM im Manifest, sonst ist die Uhr-App hier unsichtbar
+        if (i.resolveActivity(getContext().getPackageManager()) == null) {
+            call.reject("Keine Uhr-App gefunden, die Wecker annimmt.");
+            return;
+        }
         try {
             getContext().startActivity(i);
-            call.resolve();
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            ret.put("hour", spec.hour);
+            ret.put("minute", spec.minute);
+            call.resolve(ret);
         } catch (ActivityNotFoundException e) {
             call.reject("Keine Uhr-App gefunden.");
+        } catch (SecurityException e) {
+            call.reject("Die Uhr-App hat den Wecker abgelehnt (fehlende Berechtigung).");
+        } catch (Exception e) {
+            call.reject("Wecker konnte nicht gestellt werden.");
         }
     }
 
