@@ -182,3 +182,26 @@ html.jarvis-native .web-only { display: none !important; }
 .guide summary { cursor: pointer; padding: 10px 0; min-height: 44px; }
 .guide-list { margin: 4px 0 8px; padding-left: 18px; font-size: 0.92em; line-height: 1.45; }
 .guide-list li { margin-bottom: 6px; }
+
+/* ---------- v0.9: Einstellungen in klappbaren Gruppen (große Tippflächen, Samsung A55) ---------- */
+.settings-intro { margin-top: 4px; }
+.set-group { border: 1px solid var(--cyan-soft); border-radius: var(--radius); background: var(--panel); }
+.set-group > summary {
+  list-style: none; display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 16px;
+  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.set-group > summary::-webkit-details-marker { display: none; }
+.set-group > summary::after { content: '▸'; margin-left: auto; color: var(--cyan); font-size: 1.2rem; transition: transform 0.15s; }
+.set-group[open] > summary::after { transform: rotate(90deg); }
+.set-group[open] > summary { border-bottom: 1px solid var(--cyan-soft); }
+.grp-icon { font-size: 1.5rem; width: 1.8rem; text-align: center; }
+.grp-text { display: flex; flex-direction: column; gap: 2px; }
+.grp-title { font-size: 1.05rem; font-weight: 600; color: var(--text); }
+.grp-sub { font-size: 0.8rem; color: var(--muted); }
+.grp-body { display: flex; flex-direction: column; gap: 12px; padding: 12px 10px 14px; }
+.grp-body fieldset { background: transparent; }
+.settings-form label.switch { min-height: 44px; }
+.settings-save { position: sticky; bottom: 0; padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg, #050c16) 35%); z-index: 2; }
+.settings-save .btn { width: 100%; }
+fieldset.coming-soon { opacity: 0.55; filter: grayscale(0.6); }
+fieldset.coming-soon .soon-note { opacity: 1; color: var(--text); }

@@ -15,6 +15,17 @@ def check(name, cond):
     results.append((name, bool(cond)))
     print(("PASS " if cond else "FAIL ") + name)
 
+def open_settings(pg, wait=300):
+    """v0.9: Einstellungen öffnen und alle Gruppen per Tipp auf die Überschrift aufklappen (wie am Handy)."""
+    if not pg.is_visible("#view-settings"):
+        pg.click("#btn-settings")
+    pg.wait_for_timeout(wait)
+    for i in range(pg.locator("details.set-group").count()):
+        d = pg.locator("details.set-group").nth(i)
+        if not d.evaluate("e => e.open"):
+            d.locator("> summary").click()
+    pg.wait_for_timeout(100)
+
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox"])
     ctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.625, is_mobile=True, has_touch=True,
@@ -106,7 +117,7 @@ with sync_playwright() as p:
     page.screenshot(path=str(SHOTS / "main.png"))
 
     # 3) Einstellungen: Name + Schlüssel
-    page.click("#btn-settings")
+    open_settings(page)
     page.wait_for_timeout(400)
     check("Einstellungen sichtbar", page.is_visible("#view-settings"))
     page.screenshot(path=str(SHOTS / "settings.png"))
@@ -150,20 +161,20 @@ with sync_playwright() as p:
     check("Persona gespeichert", stored["name"] == "Friday" and abs(stored["pitch"] - 1.2) < 1e-9)
 
     # Modell per Dropdown + Eigenes Modell speichern
-    page.click("#btn-settings"); page.wait_for_timeout(300)
+    open_settings(page, 300)
     page.select_option("#set-provider", "xai")
     page.select_option("#set-model-select", "grok-4.6")
     page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
     models = page.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).models")
     check("Modell grok-4.6 gespeichert", models.get("xai") == "grok-4.6")
-    page.click("#btn-settings"); page.wait_for_timeout(300)
+    open_settings(page, 300)
     page.select_option("#set-model-select", "__custom__")
     check("Eigenes-Modell-Feld sichtbar", page.is_visible("#row-custom-model"))
     page.fill("#set-model-custom", "grok-custom-test")
     page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
     models = page.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).models")
     check("Eigenes Modell gespeichert", models.get("xai") == "grok-custom-test")
-    page.click("#btn-settings"); page.wait_for_timeout(200)
+    open_settings(page, 200)
     page.select_option("#set-provider", "xai")
     page.click("#btn-loadmodels"); page.wait_for_timeout(800)
     load_opts = page.eval_on_selector_all("#set-model-select option", "os => os.map(o => o.value)")
@@ -207,7 +218,7 @@ with sync_playwright() as p:
     check("Live: nur eine Antwort-Blase", page.locator(".msg.assistant", has_text="Live-Antwort").count() == 1)
 
     # 4b) Gemini als Anbieter (gemockt)
-    page.click("#btn-settings"); page.wait_for_timeout(300)
+    open_settings(page, 300)
     page.select_option("#set-provider", "gemini")
     page.fill("#set-apikey", "fake-gemini-key")
     page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
@@ -215,7 +226,7 @@ with sync_playwright() as p:
     check("Gemini: Endpunkt, Modell, Bearer", gem.get("url") == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
           and gem["body"]["model"] == "gemini-3.8-flash" and gem["auth"] == "Bearer fake-gemini-key"
           and "Du bist Friday" in gem["body"]["messages"][0]["content"])
-    page.click("#btn-settings"); page.wait_for_timeout(300)
+    open_settings(page, 300)
     page.select_option("#set-provider", "xai")
     check("xAI-Schlüssel nach Anbieterwechsel noch da", page.input_value("#set-apikey") == "xai-test-123")
     page.click("#btn-back"); page.wait_for_timeout(200)
@@ -411,7 +422,7 @@ with sync_playwright() as p:
         bask("alle Nachrichten")
         cfg = bpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).briefing")
         check("Briefing: 'alle Nachrichten' setzt zurück", cfg.get("newsRessorts") == [])
-        bpage.click("#btn-settings"); bpage.wait_for_timeout(300)
+        open_settings(bpage, 300)
         check("Briefing: Einstellungen sichtbar (Ressorts, spätestens bis)", bpage.is_visible("#briefing-fieldset") and bpage.locator("#brief-ressorts input").count() >= 5
               and bpage.locator("#set-brief-latest option").count() == 16)
         check("Briefing: Hintergrund-Optionen nur in der App", not bpage.is_visible("#set-brief-bg"))
@@ -503,7 +514,7 @@ with sync_playwright() as p:
         r = eask("Abendzusammenfassung aus")
         ecfg = epage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).evening")
         check("Abend: 'Abendzusammenfassung aus' per Sprache", ecfg.get("enabled") is False and "ausgeschaltet" in r)
-        epage.click("#btn-settings"); epage.wait_for_timeout(300)
+        open_settings(epage, 300)
         check("Abend: Einstellungen sichtbar (Start 17–22, Kalender nur App)", epage.is_visible("#evening-fieldset")
               and epage.locator("#set-eve-start option").count() == 6 and not epage.is_visible("#set-eve-calendar")
               and not epage.is_checked("#set-eve-enabled"))
@@ -588,7 +599,7 @@ with sync_playwright() as p:
     check("Gedächtnis: Passwort wird nicht gespeichert", "lieber nicht" in r and len(mem()) == 1)
 
     # Einstellungen: Liste, Hinzufügen, Filter, Bearbeiten, Löschen, Notizen übernehmen, Schalter, Vorlieben
-    mpage.click("#btn-settings"); mpage.wait_for_timeout(400)
+    open_settings(mpage, 400)
     check("Gedächtnis: Bereich in den Einstellungen mit Eintrag + Gemini-Hinweis", mpage.is_visible("#memory-fieldset")
           and mpage.locator("#mem-list .mem-item").count() == 1 and "Gemini" in mpage.inner_text("#memory-fieldset")
           and mpage.is_checked("#set-mem-ai") and mpage.is_visible("#memory-fieldset .web-only"))
@@ -645,6 +656,86 @@ with sync_playwright() as p:
     mask("ja", 700)
     check("Gedächtnis: „Vergiss alles“ nur nach Ja (Nein behält alles)", kept and len(mem()) == 0)
     mctx.close()
+
+    # 10) v0.9: Einstellungen in Gruppen – alles erreichbar, alles gespeichert, alte Einstellungen bleiben erhalten
+    sctx = browser.new_context(viewport={"width": 412, "height": 915}, device_scale_factor=2.625, is_mobile=True, has_touch=True,
+                               locale="de-DE", timezone_id="Europe/Berlin")
+    sctx.add_init_script("""
+      if (!localStorage.getItem('jarvis.persona')) {
+        // Stand wie aus v0.8.1 (inkl. eines unbekannten Schlüssels, der nicht verloren gehen darf)
+        localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Friday', onboarded: true, rate: 1.1, pitch: 0.9 }));
+        localStorage.setItem('jarvis.settings', JSON.stringify({
+          provider: 'gemini', apiKeys: { gemini: 'k-alt', xai: 'x-alt' }, models: { gemini: 'gemini-3.6-flash' }, speak: false,
+          wakeWord: false, wakeMuteBeep: false, memoryToAI: false, prefs: { antwortlaenge: 'kurz', anrede: 'du', humor: 'wenig' },
+          briefing: { enabled: true, gapHours: 6, latestHour: 11, newsRessorts: ['sport'], content: { weather: true, calendar: false, news: true, battery: true, notes: false } },
+          evening: { enabled: true, startHour: 19 }, zukunftsSchluessel: 'bleibt' }));
+      }
+    """)
+    spage = sctx.new_page()
+    spage.clock.set_fixed_time("2026-10-21T15:00:00+02:00")  # außerhalb von Briefing- und Abendfenster
+    spage.on("pageerror", lambda e: errors.append(f"settings pageerror: {e}"))
+    spage.goto(URL); spage.wait_for_load_state("networkidle"); spage.wait_for_timeout(300)
+    spage.click("#btn-settings"); spage.wait_for_timeout(300)
+    groups = spage.eval_on_selector_all("details.set-group", "ds => ds.map(d => ({ id: d.id, open: d.open, title: d.querySelector('.grp-title').textContent, h: d.querySelector('summary').getBoundingClientRect().height }))")
+    titles = [g["title"] for g in groups]
+    check("Einstellungen: 8 Gruppen in fester Reihenfolge, alle zugeklappt",
+          titles == ["Allgemein", "Sprache & Wake-Word", "Morgen-Briefing & Abend", "Gedächtnis & Notizen", "Werkzeuge & Berechtigungen",
+                     "Benachrichtigungen lesen", "Updates", "Datenschutz & Info"] and not any(g["open"] for g in groups))
+    check("Einstellungen: große Tippflächen (Gruppen ≥ 56 px hoch)", all(g["h"] >= 56 for g in groups))
+    check("Einstellungen: zugeklappt sind keine Einzelschalter sichtbar (keine Überladung)",
+          not spage.is_visible("#set-apikey") and not spage.is_visible("#set-brief-latest") and spage.is_visible(".settings-save .btn"))
+    spage.locator("#grp-general > summary").click()
+    check("Einstellungen: Tipp auf „Allgemein“ klappt auf (KI-Schlüssel wie bisher)", spage.is_visible("#set-apikey") and spage.is_visible("#btn-test"))
+    spage.locator("#grp-general > summary").click()
+    check("Einstellungen: zweiter Tipp klappt wieder zu", not spage.is_visible("#set-apikey"))
+    # Alles per Tipp aufklappen (auch innere Bereiche wie Import/Anleitung) – dann muss jedes Bedienelement sichtbar sein
+    open_settings(spage, 100)
+    for sel in ["#mem-import-box > summary", "#listen-guide > summary"]:
+        if not spage.locator(sel).evaluate("s => s.parentElement.open"):
+            spage.locator(sel).click()
+    spage.wait_for_timeout(150)
+    unreach = spage.evaluate("""() => [...document.querySelectorAll('#settings-form input, #settings-form select, #settings-form textarea, #settings-form button')]
+      .filter((el) => !el.closest('.native-only, .hidden'))
+      .filter((el) => !el.getClientRects().length)
+      .map((el) => el.id || el.className || el.tagName)""")
+    total = spage.evaluate("[...document.querySelectorAll('#settings-form input, #settings-form select, #settings-form textarea, #settings-form button')].filter((el) => !el.closest('.native-only, .hidden')).length")
+    check(f"Einstellungen: alle {total} Bedienelemente per Tipp erreichbar", total >= 50 and unreach == [])
+    if unreach: print("INFO nicht erreichbar:", unreach)
+    # Alter Stand korrekt übernommen (keine Datenverluste beim Update)
+    old_ok = (spage.input_value("#set-provider") == "gemini" and spage.input_value("#set-apikey") == "k-alt" and spage.input_value("#set-name") == "Friday"
+              and not spage.is_checked("#set-speak") and not spage.is_checked("#set-mem-ai") and spage.input_value("#set-pref-len") == "kurz"
+              and spage.input_value("#set-brief-latest") == "11" and spage.input_value("#set-eve-start") == "19" and spage.is_checked("#set-brief-enabled")
+              and spage.is_checked("#brief-ressorts input[value=sport]") and not spage.is_checked("#set-listen-open"))
+    check("Einstellungen: Stand aus v0.8.1 vollständig im neuen Menü", old_ok)
+    # Benachrichtigungen lesen: nur Vorschau, gesperrt, ohne Wirkung
+    nd = spage.evaluate("[...document.querySelectorAll('#notif-fieldset input')].map((i) => i.disabled)")
+    check("Benachrichtigungen lesen: alles gesperrt + Hinweis „kommt in v0.9.1“",
+          nd and all(nd) and spage.evaluate("document.querySelector('#notif-fieldset').disabled") and "kommt in v0.9.1" in spage.inner_text("#notif-fieldset").lower())
+    spage.locator("#set-notif-ai").click(force=True)
+    check("Benachrichtigungen lesen: Tipp auf den Schalter ändert nichts", not spage.is_checked("#set-notif-ai"))
+    check("Updates (Web): Hinweis auf Selbst-Aktualisierung, kein App-Updater", spage.is_visible("#upd-web") and spage.locator("#upd-fieldset").count() == 0)
+    # Ändern → Speichern (fester Knopf unten) → Neu laden → alles noch da
+    spage.check("#set-listen-open"); spage.check("#set-mem-ai"); spage.check("#set-speak")
+    spage.select_option("#set-brief-gap", spage.eval_on_selector_all("#set-brief-gap option", "o => o.map(x => x.value)")[-1])
+    spage.uncheck("#set-eve-news"); spage.select_option("#set-pref-humor", "viel") if "viel" in spage.eval_on_selector_all("#set-pref-humor option", "o => o.map(x => x.value)") else None
+    spage.fill("#set-rate", "1.3")
+    spage.click(".settings-save .btn"); spage.wait_for_timeout(300)
+    st = spage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings'))")
+    pe = spage.evaluate("JSON.parse(localStorage.getItem('jarvis.persona'))")
+    gap_last = spage.eval_on_selector_all("#set-brief-gap option", "o => o.map(x => x.value)")[-1]
+    check("Speichern: neue + geänderte Werte gespeichert",
+          st.get("listenOnOpen") is True and st.get("memoryToAI") is True and st.get("speak") is True and str(st["briefing"]["gapHours"]) == gap_last
+          and st["evening"]["content"]["news"] is False and abs(pe.get("rate", 0) - 1.3) < 0.01)
+    check("Speichern: alte Werte + unbekannter Schlüssel bleiben erhalten",
+          st["apiKeys"].get("gemini") == "k-alt" and st["apiKeys"].get("xai") == "x-alt" and st["models"].get("gemini") == "gemini-3.6-flash"
+          and st["briefing"]["latestHour"] == 11 and st["evening"]["startHour"] == 19 and st.get("zukunftsSchluessel") == "bleibt" and st.get("wakeMuteBeep") is False)
+    check("Speichern: „Benachrichtigungen lesen“ legt nichts an", not any("notif" in k.lower() or "benachr" in k.lower() for k in st.keys()))
+    spage.reload(); spage.wait_for_load_state("networkidle"); spage.wait_for_timeout(300)
+    open_settings(spage, 200)
+    check("Neu geladen: Werte im Menü wieder da",
+          spage.is_checked("#set-listen-open") and spage.is_checked("#set-mem-ai") and not spage.is_checked("#set-eve-news")
+          and spage.input_value("#set-brief-gap") == gap_last and spage.input_value("#set-apikey") == "k-alt")
+    sctx.close()
 
     if not URL.startswith("http://localhost"):
         page.wait_for_timeout(300)

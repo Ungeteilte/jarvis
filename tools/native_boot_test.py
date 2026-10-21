@@ -153,6 +153,14 @@ def safe(fn, *a, **k):
         print("INFO Aktion fehlgeschlagen:", str(e).splitlines()[0])
         return False
 
+def open_groups(page):
+    """v0.9: Einstellungs-Gruppen per Tipp aufklappen (wie am Handy)."""
+    for i in range(page.locator("details.set-group").count()):
+        d = page.locator("details.set-group").nth(i)
+        if not d.evaluate("e => e.open"):
+            safe(d.locator("> summary").click, timeout=3000)
+    page.wait_for_timeout(150)
+
 def run(pw, *, bridge_ms, file_ms, hang=False, **extra):
     b = pw.chromium.launch(executable_path="/usr/bin/google-chrome", args=["--no-sandbox"])
     ctx = b.new_context(viewport={"width": 412, "height": 915}, locale="de-DE", timezone_id="Europe/Berlin")
@@ -191,6 +199,7 @@ with sync_playwright() as pw:
     before = len(nat["speak"])
     safe(page.click, "#btn-settings", timeout=3000)
     page.wait_for_timeout(400)
+    open_groups(page)
     safe(page.click, "#btn-preview", timeout=3000)
     try:
         page.wait_for_function(f"window.__nat.speak.length > {before}", timeout=5000)
@@ -422,6 +431,7 @@ with sync_playwright() as pw:
     check("Laufende App: Kachel-Tipp (Ereignis) → Erkennung startet", page.evaluate("__stt.starts") == 1)
     safe(page.click, "#btn-settings", timeout=3000)
     page.wait_for_timeout(300)
+    open_groups(page)
     safe(page.click, "#btn-listen-tile", timeout=3000)
     safe(page.click, "#btn-listen-pin", timeout=3000)
     page.wait_for_timeout(400)
@@ -433,6 +443,37 @@ with sync_playwright() as pw:
     b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, sttMode="manual", listenOnOpen=True, listenLaunch={"listen": False, "opened": True})
     page.wait_for_timeout(2600)
     check("Normaler Start mit „Beim Öffnen sofort zuhören“: Erkennung startet", page.evaluate("__stt.starts") == 1)
+    errors.extend(errs)
+    b.close()
+
+    # 11) v0.9: Einstellungs-Menü in der App – native Bereiche erreichbar, genaue Alarme, Updates-Gruppe, Vorschau gesperrt
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5)
+    page.wait_for_timeout(500)
+    safe(page.click, "#btn-settings", timeout=3000)
+    page.wait_for_timeout(400)
+    open_groups(page)
+    page.wait_for_timeout(500)
+    unreach = page.evaluate("""() => [...document.querySelectorAll('#settings-form input, #settings-form select, #settings-form button')]
+      .filter((el) => !el.closest('.web-only, .hidden, details:not([open]) > :not(summary)')).filter((el) => !el.getClientRects().length).map((el) => el.id || el.tagName)""")
+    check("App-Einstellungen: alle Bedienelemente (auch nur-App) erreichbar", unreach == [])
+    if unreach: print("INFO nicht erreichbar:", unreach)
+    check("App-Einstellungen: Startton-Schalter unter „Sprache & Wake-Word“", page.locator("#grp-speech #set-wake-mute").is_visible())
+    check("App-Einstellungen: App-Updates in der Gruppe „Updates“", page.locator("#grp-updates #upd-fieldset").count() == 1)
+    check("App-Einstellungen: genaue Erinnerungen „nicht freigegeben“ + Knopf", "nicht freigegeben" in page.inner_text("#exact-status") and page.is_visible("#btn-exact"))
+    safe(page.click, "#btn-exact", timeout=3000)
+    page.wait_for_timeout(1200)
+    check("App-Einstellungen: Knopf öffnet „Wecker & Erinnerungen“", "changeExact" in page.evaluate("window.__nat.calls"))
+    check("App-Einstellungen: Benachrichtigungen lesen gesperrt, kein Plugin-Aufruf dazu",
+          page.evaluate("[...document.querySelectorAll('#notif-fieldset input')].every((i) => i.disabled)")
+          and not any("otif" in c and "Listener" in c for c in page.evaluate("window.__nat.calls")))
+    page.check("#set-wake-mute") if not page.is_checked("#set-wake-mute") else page.uncheck("#set-wake-mute")
+    want = page.is_checked("#set-wake-mute")
+    safe(page.click, ".settings-save .btn", timeout=3000)
+    page.wait_for_timeout(600)
+    stored = page.evaluate("JSON.parse(window.__secure['jarvis.settings'] || 'null')")
+    check("App-Einstellungen: Speichern übernimmt den Schalter (sicherer Speicher), Schlüssel bleibt",
+          bool(stored) and stored.get("wakeMuteBeep") == want and stored.get("apiKeys", {}).get("gemini") == "test-key")
+    check("App-Einstellungen: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

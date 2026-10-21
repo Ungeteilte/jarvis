@@ -102,6 +102,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     fillMemory(draft);
     fillBriefing(draft.briefing);
     fillEvening(draft.evening);
+    renderExact();
     refreshVoices();
   }
 
@@ -211,13 +212,17 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     onTestEvening?.();
   });
 
-  const nbBtn = (id, fn) => $(id)?.addEventListener('click', async () => { await fn(); setTimeout(renderNativeStatus, 800); });
+  const nbBtn = (id, fn) => $(id)?.addEventListener('click', async () => { await fn(); setTimeout(() => { renderNativeStatus(); renderExact(); }, 800); });
   if (nb) {
     nbBtn('#btn-brief-notif', () => nb.requestNotifications());
     nbBtn('#btn-brief-cal', () => nb.requestCalendar());
     nbBtn('#btn-brief-battery', () => nb.requestIgnoreBattery());
     nbBtn('#btn-brief-appsettings', () => nb.openAppSettings());
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#view-settings').classList.contains('hidden')) renderNativeStatus(); });
+    // v0.9: dieselben Wege in „Werkzeuge & Berechtigungen“
+    nbBtn('#btn-tools-notif', () => nb.requestNotifications());
+    nbBtn('#btn-tools-battery', () => nb.requestIgnoreBattery());
+    nbBtn('#btn-tools-appsettings', () => nb.openAppSettings());
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#view-settings').classList.contains('hidden')) { renderNativeStatus(); renderExact(); } });
   }
 
   function draftConfig() {
@@ -311,6 +316,26 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     const persona = savePersona(store, currentPersonaFromForm());
     toast('Gespeichert.');
     onSaved({ settings, persona });
+  });
+
+  // ---------- v0.9: Werkzeuge & Berechtigungen – „Wecker & Erinnerungen“ (genaue Alarme) ----------
+  const rem = device?.reminders || null;
+  const EXACT_TEXT = {
+    granted: '✅ Genaue Erinnerungen: erlaubt.',
+    denied: '⚠️ Genaue Erinnerungen: nicht freigegeben – Erinnerungen kommen ungefähr pünktlich.',
+    unknown: 'Genaue Erinnerungen: Status unbekannt.'
+  };
+  async function renderExact() {
+    const el = $('#exact-status');
+    if (!el) return;
+    if (!rem?.exactStatus) { el.textContent = ''; return; }
+    const r = await rem.exactStatus();
+    el.textContent = EXACT_TEXT[r?.exact] || EXACT_TEXT.unknown;
+    $('#btn-exact')?.classList.toggle('hidden', r?.exact === 'granted');
+  }
+  $('#btn-exact')?.addEventListener('click', async () => {
+    if (rem?.openExactSettings) await rem.openExactSettings();
+    setTimeout(renderExact, 800);
   });
 
   // ---------- v0.9 Stufe 0: Schnell fragen (Anleitung + Kachel/Verknüpfung) ----------

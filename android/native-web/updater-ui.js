@@ -35,9 +35,12 @@ export function mountUpdaterUI(plugin, doc = document) {
       <button id="upd-notif-btn" type="button" class="btn small">Erlauben</button></p>
     <p class="hint">Updates kommen nur von github.com/Ungeteilte/jarvis, werden per SHA-256 und Signatur geprüft
       und erst nach Ihrer Bestätigung im Android-Dialog installiert.</p>`;
+  // v0.9: eigene Gruppe „Updates“ in den Einstellungen (#upd-slot); ältere Oberflächen: vor „Daten“
+  const slot = doc.getElementById('upd-slot');
   const form = doc.getElementById('settings-form');
   const dataFs = [...(form?.querySelectorAll('fieldset') || [])].find((f) => /Daten/.test(f.querySelector('legend')?.textContent || ''));
-  if (dataFs) form.insertBefore(fs, dataFs); else form?.append(fs);
+  if (slot) slot.append(fs);
+  else if (dataFs) form.insertBefore(fs, dataFs); else form?.append(fs);
 
   // ---------- Karte ----------
   const card = doc.createElement('div');

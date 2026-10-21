@@ -43,7 +43,8 @@ with sync_playwright() as p:
     page.wait_for_timeout(400)
     page.evaluate("document.getElementById('onboarding')?.close?.()")
     check("Einstellungsbereich 'App-Updates' eingefügt", page.locator("#upd-fieldset legend").inner_text() == "App-Updates")
-    check("Bereich steht vor 'Daten'", page.evaluate("""() => { const fs=[...document.querySelectorAll('#settings-form fieldset legend')].map(l=>l.textContent); return fs.indexOf('App-Updates') === fs.indexOf('Daten') - 1; }"""))
+    check("Bereich steht in der Gruppe 'Updates'", page.evaluate("() => !!document.querySelector('#grp-updates #upd-slot #upd-fieldset')"))
+    page.evaluate("document.querySelectorAll('details.set-group').forEach((d) => { d.open = true; })")
     check("Toggle 'Automatisch nach Updates suchen' Standard AN", page.is_checked("#upd-enabled"))
     check("Toggle 'Nur über WLAN' Standard AUS", not page.is_checked("#upd-wifi"))
     check("Intervall Standard 6 h, Optionen 3/6/12/24",
