@@ -21,7 +21,10 @@ Optimiert für das **Samsung Galaxy A55 5G mit Chrome**.
 - „Wie spät ist es?“ · „Welches Datum haben wir?“
 - „Stell einen Timer auf 5 Minuten“ · „Timer auf 1 Stunde und 30 Minuten“ · „Wie lange läuft der Timer noch?“ · „Timer stoppen“
 - „Merk dir, dass ich dienstags um 20 Uhr streame“ · „Was weißt du über mich?“ · „Vergiss, dass …“ · „Vergiss das“
-- „Notiere: Milch kaufen“ · „Schreib auf: …“ · „Meine Notizen“ · „Lösche alle Notizen“
+- „Notiere: Milch kaufen“ · „Schreib auf: …“ · „Meine Notizen“ · „Lösche die Notiz Milch“ · „Lösche alle Notizen“ (mit Karte) · „Rückgängig“
+- „Erinnere mich morgen um 9 an den Arzt“ · „Erinnere mich in 2 Stunden an den Ofen“ · „Welche Erinnerungen habe ich?“ (ab v0.9)
+- „Öffne Instagram“ · „Pause“ · „nächstes Lied“ · „Lautstärke auf 30 Prozent“ · „Bin ich im WLAN?“ (ab v0.9)
+- „Speichere meine Notizen als Datei“ · „Lies mir eine Datei vor“ · „Trag morgen um 15 Uhr Zahnarzt ein“ (ab v0.9)
 - „Antworte kürzer“ · „Duz mich“ · „Weniger Witze“
 - „Was kannst du?“ · „Wie heißt du?“
 
@@ -213,16 +216,31 @@ häufige Befehle greifen aber auch **ohne API-Schlüssel** über lokale Erkennun
 | Zwischenablage | „Kopiere …“ | ✅ | – |
 | Taschenlampe | „Taschenlampe an“ | ⚠️ oft **nicht** unterstützt (Camera torch) | ✅ geplant |
 | Timer / Notizen / Gedächtnis | „Stell einen Timer…“ / „Notiere…“ / „Merk dir…“ | ✅ | – |
+| Apps starten (v0.9) | „Öffne Instagram“ | – | ✅ nur Launcher-Apps; mehrdeutig → Auswahlkarte |
+| Dateien (v0.9) | „Speichere/Teile meine Notizen als Datei“, „Lies mir eine Datei vor“ | ✅ Download / Dateiauswahl | ✅ System-Dialog (SAF) |
+| Erinnerungen (v0.9) | „Erinnere mich morgen um 9 an …“ | ⚠️ nur bei offener Seite | ✅ Benachrichtigung, auch nach Neustart |
+| Medien / Lautstärke (v0.9) | „Pause“, „Lautstärke auf 30 Prozent“ | – | ✅ |
+| Gerätestatus (v0.9) | „Bin ich im WLAN?“ | ⚠️ nur Akku | ✅ WLAN, Mobil, Bluetooth, Nicht stören, Akku |
+| Kalender-Entwurf (v0.9) | „Trag morgen um 15 Uhr Zahnarzt ein“ | ✅ .ics-Datei | ✅ Kalender-App mit Entwurf (Sie speichern) |
 
 Aktionen, die die App verlassen (Anruf, SMS, WhatsApp, E-Mail, Maps, …), zeigen zuerst eine **Ja/Nein-Karte** im Chat.
+
+**Ab v0.9 – Risikoklassen:** jedes Werkzeug ist `lesen`, `lokal`, `schreiben` oder `aussen` (unbekannt = `aussen`).
+`registry.run` entscheidet zentral: `aussen` braucht eine Karte; hat Jarvis im selben Zug Inhalte von außen gelesen
+(Netz, Datei), brauchen auch `schreiben`/`aussen` eine Karte mit Herkunftshinweis und `lokal` ist auf 2 Aufrufe begrenzt.
+
+**Ab v0.9 – „Jarvis fragen“:** Schnelleinstellungs-Kachel, Verknüpfung (lange aufs Symbol tippen) oder
+`jarvis://zuhoeren` öffnen Jarvis und Jarvis hört sofort zu. Mit „Beim Öffnen sofort zuhören“ auch über die
+Seitentaste oder „Hey Google, öffne Jarvis“. Kein Zuhören im Hintergrund.
 
 ### Neues Werkzeug hinzufügen
 
 1. In `js/core/tools/definitions.js` ein Objekt ergänzen: `name`, `description`, `parameters` (JSON-Schema),
    `execute(args, ctx)`, optional `localTriggers` und `userHint`.
 2. Plattformzugriff nur über `ctx.device` (Methoden in `js/adapters/web-device.js`, später Android-Adapter).
-3. Unit-Test in `tests/tools.test.mjs` schreiben, `npm test` ausführen.
-4. In `sw.js` die `VERSION` hochzählen und die neue Datei ggf. in `APP_SHELL` eintragen.
+3. Eine Risikoklasse setzen (`risk: 'lesen' | 'lokal' | 'schreiben' | 'aussen'`, siehe `js/core/tools/risk.js`).
+4. Unit-Test in `tests/tools.test.mjs` schreiben, `npm test` ausführen.
+5. In `sw.js` die `VERSION` hochzählen und die neue Datei in `APP_SHELL` eintragen (`tests/sw-shell.test.mjs` prüft das).
 
 ## 🧩 Aufbau des Codes (für den späteren Umbau zur Android-App)
 
