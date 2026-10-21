@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.jarvis.assistant.briefing.BriefingLaunch;
 import com.jarvis.assistant.briefing.BriefingScheduler;
+import com.jarvis.assistant.listen.ListenLaunch;
 import com.jarvis.assistant.updater.UpdateEngine;
 import com.jarvis.assistant.updater.UpdateInstaller;
 import com.jarvis.assistant.updater.UpdateNotifier;
@@ -54,6 +55,20 @@ public class MainActivity extends BridgeActivity {
     public void installAfterPermission() { installAfterPermission = true; }
 
     private void handleIntent(Intent intent) {
+        // v0.9 Stufe 0: „Jarvis fragen“ (Kachel, Verknüpfung, jarvis://zuhoeren) bzw. normaler Start
+        if (intent != null) {
+            boolean extra = false;
+            try { extra = intent.getBooleanExtra(ListenLaunch.EXTRA_LISTEN, false); } catch (Exception ignored) {}
+            android.net.Uri d = intent.getData();
+            ListenLaunch.Kind k = ListenLaunch.record(ListenLaunch.classify(intent.getAction(),
+                d == null ? null : d.getScheme(), d == null ? null : d.getHost(), extra, intent.getCategories()));
+            if (k == ListenLaunch.Kind.LISTEN) {
+                intent.setAction(Intent.ACTION_MAIN); // nicht bei Drehung/Neustart erneut auslösen
+                intent.setData(null);
+                intent.removeExtra(ListenLaunch.EXTRA_LISTEN);
+                return;
+            }
+        }
         if (intent != null && BriefingLaunch.ACTION.equals(intent.getAction())) {
             BriefingLaunch.handle(this, intent);
             intent.setAction(Intent.ACTION_MAIN);

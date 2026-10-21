@@ -177,3 +177,8 @@ html.jarvis-native .web-only { display: none !important; }
 .ressorts label { display: inline-flex; align-items: center; gap: 6px; }
 .row.wrap { flex-wrap: wrap; gap: 8px; }
 .start-card .confirm-body strong { color: #3ad6ff; }
+
+/* v0.9 Stufe 0: Anleitung „Schnell fragen“ */
+.guide summary { cursor: pointer; padding: 10px 0; min-height: 44px; }
+.guide-list { margin: 4px 0 8px; padding-left: 18px; font-size: 0.92em; line-height: 1.45; }
+.guide-list li { margin-bottom: 6px; }

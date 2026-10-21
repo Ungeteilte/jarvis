@@ -6,6 +6,7 @@ import { askAI, listModels } from '../core/ai.js';
 import { loadNotes } from '../core/skills.js';
 import { loadMemory, addMemory, updateMemory, removeMemory, clearMemory, migrateNotes, exportMemory, importMemory, KATEGORIE_LABELS } from '../core/memory.js';
 import { PREF_OPTIONS, PREF_LABELS } from '../core/prefs.js';
+import { LISTEN_GUIDE } from '../core/listen-launch.js';
 import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig } from '../core/briefing/index.js';
 
 export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing, onTestEvening }) {
@@ -13,7 +14,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     provider: $('#set-provider'), baseurl: $('#set-baseurl'), rowBase: $('#row-baseurl'),
     apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
     name: $('#set-name'), voice: $('#set-voice'), rate: $('#set-rate'), pitch: $('#set-pitch'),
-    outRate: $('#out-rate'), outPitch: $('#out-pitch'), speak: $('#set-speak'), wake: $('#set-wake'), wakeMute: $('#set-wake-mute'),
+    outRate: $('#out-rate'), outPitch: $('#out-pitch'), speak: $('#set-speak'), wake: $('#set-wake'), wakeMute: $('#set-wake-mute'), listenOpen: $('#set-listen-open'),
     testResult: $('#test-result'), notes: $('#notes-view')
   };
   // Formularwerte pro Anbieter zwischenspeichern, damit Umschalten nichts verliert
@@ -96,6 +97,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     f.speak.checked = draft.speak;
     f.wake.checked = draft.wakeWord;
     f.wakeMute.checked = draft.wakeMuteBeep;
+    f.listenOpen.checked = draft.listenOnOpen;
     f.notes.classList.add('hidden');
     fillMemory(draft);
     fillBriefing(draft.briefing);
@@ -300,6 +302,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       speak: f.speak.checked,
       wakeWord: f.wake.checked,
       wakeMuteBeep: f.wakeMute.checked,
+      listenOnOpen: f.listenOpen.checked,
       briefing: readBriefing(),
       evening: readEvening(),
       memoryToAI: m.ai.checked,
@@ -308,6 +311,27 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     const persona = savePersona(store, currentPersonaFromForm());
     toast('Gespeichert.');
     onSaved({ settings, persona });
+  });
+
+  // ---------- v0.9 Stufe 0: Schnell fragen (Anleitung + Kachel/Verknüpfung) ----------
+  const listenStatus = (t) => { $('#listen-status').textContent = t || ''; };
+  $('#listen-guide-list').replaceChildren(...LISTEN_GUIDE.map((g) => {
+    const li = document.createElement('li');
+    li.dataset.guide = g.id;
+    const b = document.createElement('strong');
+    b.textContent = g.title + ': ';
+    li.append(b, document.createTextNode(g.text));
+    return li;
+  }));
+  const ll = device?.listenLaunch || null;
+  $('#btn-listen-tile')?.addEventListener('click', async () => {
+    const r = ll ? await ll.addTile() : null;
+    listenStatus(r?.ok ? 'Bitte im System-Dialog „Kachel hinzufügen“ bestätigen.'
+      : 'Bitte von Hand: zweimal von oben wischen → ✏️ → „Jarvis fragen“ in die Kacheln ziehen.');
+  });
+  $('#btn-listen-pin')?.addEventListener('click', async () => {
+    const r = ll ? await ll.pinShortcut() : null;
+    listenStatus(r?.ok ? 'Bitte im Dialog „Hinzufügen“ bestätigen.' : (r?.message || 'Lange auf das Jarvis-Symbol tippen und „Jarvis fragen“ herausziehen.'));
   });
 
   // ---------- Gedächtnis ----------

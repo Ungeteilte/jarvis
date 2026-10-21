@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v0.9 Stufe 0: lange auf das App-Symbol tippen → „Jarvis fragen“ (öffnet und hört sofort zu);
+     lässt sich auf den Startbildschirm ziehen. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="jarvis_fragen"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_ask"
+        android:shortcutShortLabel="@string/shortcut_ask_short"
+        android:shortcutLongLabel="@string/shortcut_ask_long">
+        <intent
+            android:action="com.jarvis.assistant.action.LISTEN"
+            android:targetPackage="com.jarvis.assistant"
+            android:targetClass="com.jarvis.assistant.MainActivity" />
+    </shortcut>
+</shortcuts>

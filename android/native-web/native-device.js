@@ -120,6 +120,14 @@ export function createNativeDevice() {
       onLaunch: (cb) => { try { J()?.addListener?.('briefingLaunch', cb); } catch { /* egal */ } }
     },
 
+    // v0.9 Stufe 0: „Jarvis fragen“ (Kachel, Verknüpfung, jarvis://zuhoeren) – kein Hintergrund-Zuhören
+    listenLaunch: {
+      consume: () => jcall('consumeListenLaunch'),
+      onLaunch: (cb) => { try { J()?.addListener?.('listenLaunch', cb); } catch { /* egal */ } },
+      pinShortcut: () => jcall('pinListenShortcut'),
+      addTile: () => jcall('requestAddListenTile')
+    },
+
     async copyText(text) {
       try {
         await J().copyText({ text });

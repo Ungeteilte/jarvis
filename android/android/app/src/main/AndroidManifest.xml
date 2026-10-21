@@ -24,7 +24,33 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- v0.9 Stufe 0: öffnen und sofort zuhören – jarvis://zuhoeren (bewusst ohne BROWSABLE:
+                 Webseiten können das nicht auslösen) und die Aktion für Kachel/Verknüpfung -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="jarvis" android:host="zuhoeren" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.jarvis.assistant.action.LISTEN" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+
         </activity>
+
+        <!-- v0.9 Stufe 0: Schnelleinstellungs-Kachel „Jarvis fragen“ (nur bei Tipp aktiv, kein Dauer-Dienst) -->
+        <service
+            android:name=".listen.ListenTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_mic"
+            android:label="@string/tile_ask"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="false" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -52,7 +52,7 @@ FAKE = r"""
   const CFG = %s;
   const lat = (v) => new Promise((r) => setTimeout(() => r(v), CFG.bridgeMs));
   const never = () => new Promise(() => {});
-  window.__nat = { speak: [], web: [], calls: [] };
+  window.__nat = { speak: [], web: [], calls: [], listenPending: CFG.listenLaunch || null };
   const st = window.__stt = { starts: 0, overlaps: 0, active: null, speaking: 0, bg: false, startsDuringSpeak: 0, startsDuringBg: 0,
     mode: CFG.sttMode || 'silence', segMs: CFG.segMs || 300, times: [], speakEnds: [], mute: [], cancels: 0, cbs: {} };
   const emit = (name, ev) => (st.cbs[name] || []).forEach((cb) => { try { cb(ev); } catch (e) {} });
@@ -60,7 +60,7 @@ FAKE = r"""
   st.bgSpeech = (on) => { st.bg = on; emit('backgroundSpeech', { speaking: on }); };
   const secure = {
     'jarvis.persona': JSON.stringify({ name: 'Jarvis', onboarded: true, voiceId: '' }),
-    'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' }, wakeWord: Boolean(CFG.wake) })
+    'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' }, wakeWord: Boolean(CFG.wake), listenOnOpen: Boolean(CFG.listenOnOpen) })
   };
   if (CFG.memory) secure['jarvis.memory'] = JSON.stringify({ version: 1, items: CFG.memory.map((t, i) => ({ id: 'm' + i, text: t, kategorie: 'sonstiges', quelle: 'sprache', erstellt: '2026-10-19T10:00:00.000Z', geaendert: '2026-10-19T10:00:00.000Z' })) });
   window.__secure = secure;
@@ -109,10 +109,15 @@ FAKE = r"""
     // v0.9 W2: Fake-SAF (System-Dialoge) und Teilen
     saveDocument: (a) => { (window.__nat.saved = window.__nat.saved || []).push(a); return lat({ ok: true, name: a.name }); },
     openTextDocument: () => { window.__nat.calls.push('openTextDocument'); return lat(CFG.pickFile || { ok: false, cancelled: true }); },
+    // v0.9 Stufe 0: Start über Kachel/Verknüpfung (einmal abholbar) + Ereignis bei laufender App
+    consumeListenLaunch: () => { const r = window.__nat.listenPending || { listen: false, opened: false }; window.__nat.listenPending = null; return lat(r); },
+    pinListenShortcut: rec('pinListenShortcut', { ok: true }),
+    requestAddListenTile: rec('requestAddListenTile', { ok: true }),
     shareTextFile: (a) => { (window.__nat.shared = window.__nat.shared || []).push(a); return lat({ ok: true }); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
+    __emitListen: (o) => { window.__nat.listenPending = o; (st.cbs.listenLaunch || []).forEach((cb) => cb({ listen: !!o.listen })); },
     addListener: (name, cb) => { (st.cbs[name] = st.cbs[name] || []).push(cb); return { remove() {} }; }
   };
   const J = new Proxy(base, { get: (t, k) => (k in t ? t[k] : rec(String(k), {})) });
@@ -395,6 +400,39 @@ with sync_playwright() as pw:
     r = nask("Rückgängig")
     check("Notizen: Rückgängig holt beide zurück", "2 Notizen sind wieder da" in r)
     check("W5: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 10) v0.9 Stufe 0: „Jarvis fragen“ – Kachel/Verknüpfung hört sofort zu, normaler Start nur mit Schalter
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, sttMode="manual", listenLaunch={"listen": True, "opened": False})
+    page.wait_for_timeout(1500)
+    check("Jarvis fragen: Start über Kachel → Erkennung läuft sofort (ohne Wake-Word)",
+          page.evaluate("__stt.starts") == 1 and page.evaluate("__stt.active") is not None)
+    page.evaluate("__stt.emitFinal('Wie spät ist es')")
+    page.wait_for_timeout(900)
+    check("Jarvis fragen: Frage wird beantwortet", any("Uhr" in t for t in page.evaluate("window.__nat.speak")))
+    check("Jarvis fragen: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, sttMode="manual", listenLaunch={"listen": False, "opened": True})
+    page.wait_for_timeout(2200)
+    check("Normaler Start ohne Schalter: kein Zuhören", page.evaluate("__stt.starts") == 0)
+    page.evaluate("window.Capacitor.Plugins.JarvisNative.__emitListen({ listen: true, opened: false })")
+    page.wait_for_timeout(800)
+    check("Laufende App: Kachel-Tipp (Ereignis) → Erkennung startet", page.evaluate("__stt.starts") == 1)
+    safe(page.click, "#btn-settings", timeout=3000)
+    page.wait_for_timeout(300)
+    safe(page.click, "#btn-listen-tile", timeout=3000)
+    safe(page.click, "#btn-listen-pin", timeout=3000)
+    page.wait_for_timeout(400)
+    calls = page.evaluate("window.__nat.calls")
+    check("Einstellungen: Kachel- und Verknüpfungs-Knopf rufen das Plugin", "requestAddListenTile" in calls and "pinListenShortcut" in calls)
+    check("Einstellungen: Anleitung mit Seitentaste/Bixby/Hey Google", page.locator("#listen-guide-list li").count() >= 5)
+    errors.extend(errs)
+    b.close()
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, sttMode="manual", listenOnOpen=True, listenLaunch={"listen": False, "opened": True})
+    page.wait_for_timeout(2600)
+    check("Normaler Start mit „Beim Öffnen sofort zuhören“: Erkennung startet", page.evaluate("__stt.starts") == 1)
     errors.extend(errs)
     b.close()
 

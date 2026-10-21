@@ -4,4 +4,7 @@
     <string name="title_activity_main">Jarvis</string>
     <string name="package_name">com.jarvis.assistant</string>
     <string name="custom_url_scheme">com.jarvis.assistant</string>
+    <string name="shortcut_ask_short">Jarvis fragen</string>
+    <string name="shortcut_ask_long">Jarvis fragen (hört sofort zu)</string>
+    <string name="tile_ask">Jarvis fragen</string>
 </resources>

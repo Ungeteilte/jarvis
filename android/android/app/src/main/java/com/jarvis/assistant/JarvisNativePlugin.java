@@ -33,6 +33,7 @@ import androidx.security.crypto.MasterKeys;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.jarvis.assistant.listen.ListenLaunch;
 import com.jarvis.assistant.tools.CalendarDraftSpec;
 import com.jarvis.assistant.tools.DeviceStatusMapper;
 import com.jarvis.assistant.tools.FileLimits;
@@ -116,6 +117,11 @@ public class JarvisNativePlugin extends Plugin {
         UpdateEvents.add(updateListener);
         BriefingLaunch.setListener(() -> {
             try { notifyListeners("briefingLaunch", new JSObject()); } catch (Exception ignored) {}
+        });
+        ListenLaunch.setListener((listen) -> {
+            JSObject o = new JSObject();
+            o.put("listen", listen);
+            try { notifyListeners("listenLaunch", o); } catch (Exception ignored) {}
         });
 
         // Spracherkennung: eine Instanz, Haupt-Thread, Ereignisse mit Sitzungskennung
@@ -1056,6 +1062,70 @@ public class JarvisNativePlugin extends Plugin {
             } catch (Exception ignored) {}
         }
         call.resolve(briefingStatusObject());
+    }
+
+    /** v0.9 Stufe 0: Wurde Jarvis zum Zuhören (Kachel/Verknüpfung/jarvis://zuhoeren) oder normal geöffnet? (einmalig) */
+    @PluginMethod
+    public void consumeListenLaunch(PluginCall call) {
+        boolean[] r = ListenLaunch.consume();
+        JSObject o = new JSObject();
+        o.put("listen", r[0]);
+        o.put("opened", r[1]);
+        call.resolve(o);
+    }
+
+    /** Verknüpfung „Jarvis fragen“ auf den Startbildschirm legen (der Launcher fragt nach). */
+    @PluginMethod
+    public void pinListenShortcut(PluginCall call) {
+        JSObject ret = new JSObject();
+        Context c = getContext();
+        try {
+            if (!androidx.core.content.pm.ShortcutManagerCompat.isRequestPinShortcutSupported(c)) {
+                ret.put("ok", false);
+                ret.put("message", "Dieser Startbildschirm unterstützt das nicht. Tippen Sie lange auf das Jarvis-Symbol und ziehen Sie „Jarvis fragen“ heraus.");
+                call.resolve(ret);
+                return;
+            }
+            Intent i = new Intent(c, MainActivity.class).setAction(ListenLaunch.ACTION_LISTEN);
+            androidx.core.content.pm.ShortcutInfoCompat info = new androidx.core.content.pm.ShortcutInfoCompat.Builder(c, "jarvis_fragen_pin")
+                .setShortLabel("Jarvis fragen")
+                .setLongLabel("Jarvis fragen (hört sofort zu)")
+                .setIcon(androidx.core.graphics.drawable.IconCompat.createWithResource(c, R.drawable.ic_shortcut_ask))
+                .setIntent(i)
+                .build();
+            ret.put("ok", androidx.core.content.pm.ShortcutManagerCompat.requestPinShortcut(c, info, null));
+        } catch (Exception e) {
+            ret.put("ok", false);
+            ret.put("message", "Die Verknüpfung ließ sich nicht anlegen.");
+        }
+        call.resolve(ret);
+    }
+
+    /** Kachel „Jarvis fragen“ zu den Schnelleinstellungen hinzufügen (Android 13+ mit System-Dialog). */
+    @PluginMethod
+    public void requestAddListenTile(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (Build.VERSION.SDK_INT < 33) {
+            ret.put("ok", false);
+            ret.put("manual", true);
+            call.resolve(ret);
+            return;
+        }
+        try {
+            android.app.StatusBarManager sbm = getContext().getSystemService(android.app.StatusBarManager.class);
+            sbm.requestAddTileService(
+                new android.content.ComponentName(getContext(), com.jarvis.assistant.listen.ListenTileService.class),
+                "Jarvis fragen",
+                android.graphics.drawable.Icon.createWithResource(getContext(), R.drawable.ic_tile_mic),
+                getContext().getMainExecutor(),
+                result -> {}
+            );
+            ret.put("ok", true);
+        } catch (Exception e) {
+            ret.put("ok", false);
+            ret.put("manual", true);
+        }
+        call.resolve(ret);
     }
 
     /** Wurde die App über die Briefing-Benachrichtigung geöffnet? (einmalig) */

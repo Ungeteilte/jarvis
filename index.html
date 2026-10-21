@@ -108,6 +108,19 @@
         <label class="switch"><input id="set-wake" type="checkbox"> Wake-Word „Hey <span class="name-ref">Jarvis</span>“ (nur bei offener App)</label>
         <label class="switch native-only"><input id="set-wake-mute" type="checkbox"> Startton der Spracherkennung beim Wake-Word unterdrücken</label>
         <p class="hint native-only">Dafür werden System- und (wenn gerade nichts läuft) Medienton beim Start der Erkennung etwa eine Sekunde stummgeschaltet und danach wiederhergestellt. Benachrichtigungen und Klingelton bleiben unberührt; bei „Nicht stören“ oder während eines Anrufs passiert nichts.</p>
+        <div id="listen-box" class="listen-box">
+          <p class="hint"><strong>Schnell fragen</strong> – Jarvis öffnen und sofort zuhören (kein Zuhören im Hintergrund):</p>
+          <label class="switch"><input id="set-listen-open" type="checkbox"> Beim Öffnen sofort zuhören (Seitentaste, „Hey Google, öffne Jarvis“)</label>
+          <div class="row wrap native-only">
+            <button id="btn-listen-tile" type="button" class="btn small">➕ Kachel hinzufügen</button>
+            <button id="btn-listen-pin" type="button" class="btn small">🏠 Verknüpfung anlegen</button>
+          </div>
+          <p id="listen-status" class="hint" aria-live="polite"></p>
+          <details id="listen-guide" class="guide">
+            <summary>Anleitung: Kachel, Startbildschirm, „Hey Google“, Bixby, Seitentaste</summary>
+            <ul id="listen-guide-list" class="guide-list"></ul>
+          </details>
+        </div>
       </fieldset>
 
       <fieldset id="briefing-fieldset">

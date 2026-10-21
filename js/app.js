@@ -9,6 +9,7 @@ import { createAssistant } from './core/assistant.js';
 import { createWakeController } from './core/wake-controller.js';
 import { formatDuration, loadNotes } from './core/skills.js';
 import { dueReminders, markDone, formatWhen } from './core/reminders.js';
+import { decideListen, parseListenUrl } from './core/listen-launch.js';
 import { createSentenceChunker } from './core/sentences.js';
 import { createWebStorageAdapter } from './adapters/web-storage.js';
 import { createWebTTS } from './adapters/web-tts.js';
@@ -358,6 +359,8 @@ async function maybeAutoBriefing() {
     settings = loadSettings(store);
     const cfg = settings.briefing;
     if ((!cfg.enabled && !settings.evening.enabled) || !persona.onboarded || busy) return;
+    // „Jarvis fragen“ hat Vorrang: wer gerade fragen will, bekommt kein Briefing dazwischen (kommt beim nächsten Öffnen)
+    if (listening || Date.now() - listenRequestedAt < 5000) return;
     const nowMs = Date.now();
     const today = dayKey(nowMs);
     if (nativeBriefing) {
@@ -425,6 +428,27 @@ function onNativeLaunch(r) {
 }
 
 let listening = false;
+// ---------- v0.9 Stufe 0: „Jarvis fragen“ ----------
+let listenRequestedAt = 0;
+
+/** Start abholen: Android über das Plugin, PWA über ?zuhoeren=1 (danach aus der Adresse entfernt). */
+async function consumeListenLaunch() {
+  if (device.listenLaunch?.consume) return (await device.listenLaunch.consume()) || null;
+  const u = parseListenUrl(location.href);
+  if (u.cleanUrl !== null) { try { history.replaceState(null, '', u.cleanUrl); } catch { /* egal */ } }
+  return u.listen ? { listen: true, opened: false } : null;
+}
+
+/** Zuhören, wenn angefordert. Normaler Start (mit „Beim Öffnen sofort zuhören“) lässt dem Briefing kurz den Vortritt. */
+function onListenLaunch(launch) {
+  if (!launch || (!launch.listen && !launch.opened)) return;
+  const go = () => {
+    const d = decideListen(launch, settings, { onboarded: persona.onboarded, busy, listening, hidden: document.hidden });
+    if (d.listen) onMic();
+  };
+  if (launch.listen) go(); else setTimeout(go, 1200);
+}
+
 async function onMic() {
   if (!stt.isSupported()) return view.toast('Spracherkennung wird hier nicht unterstützt. Bitte Chrome verwenden.');
   if (!window.isSecureContext) return view.toast('Das Mikrofon funktioniert nur über HTTPS.');
@@ -587,7 +611,15 @@ function init() {
 
   // Morgen-Briefing: beim ersten Öffnen nach dem Aufwachen (bzw. aus der Benachrichtigung)
   (async () => {
+    // v0.9 Stufe 0: zuerst schauen, ob Jarvis zum Fragen geöffnet wurde (Kachel/Verknüpfung/jarvis://zuhoeren)
+    const firstLaunch = await consumeListenLaunch();
+    if (firstLaunch?.listen) listenRequestedAt = Date.now();
     await maybeAutoBriefing(); // holt auch einen Start aus der Benachrichtigung ab
+    onListenLaunch(firstLaunch);
+    device.listenLaunch?.onLaunch?.(async (ev) => {
+      if (ev?.listen) listenRequestedAt = Date.now(); // vor dem Briefing-Check beim Zurückkehren
+      onListenLaunch(await device.listenLaunch.consume());
+    });
     nativeBriefing?.onLaunch?.(async () => {
       const r = await nativeBriefing.consumeLaunch();
       if (r?.requested) onNativeLaunch(r);
