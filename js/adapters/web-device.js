@@ -129,6 +129,65 @@ export function createWebDevice({ openExternal = (url) => { window.location.href
       }
     },
 
+    // ---------- v0.9 W2: Dateien ----------
+    /** Speichern als Download (Blob). Der Browser fragt je nach Einstellung nach dem Ort. */
+    async saveTextFile({ name, mime, text }) {
+      try {
+        const url = URL.createObjectURL(new Blob([text], { type: `${mime};charset=utf-8` }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return { ok: true, name, message: `„${name}“ wird heruntergeladen.` };
+      } catch (e) {
+        return { ok: false, message: e.message };
+      }
+    },
+
+    /** Datei-Auswahl im Browser braucht einen Tipp → das Werkzeug zeigt vorher eine Karte. */
+    filePickNeedsGesture: true,
+
+    /** <input type=file>: liest nur Textdateien bis 256 KB (größere werden gar nicht erst gelesen). */
+    pickTextFile() {
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.txt,.md,.markdown,.json,text/plain,text/markdown,application/json';
+        input.style.display = 'none';
+        let done = false;
+        const finish = (r) => { if (done) return; done = true; input.remove(); resolve(r); };
+        input.addEventListener('cancel', () => finish({ ok: false, cancelled: true }));
+        input.addEventListener('change', async () => {
+          const f = input.files?.[0];
+          if (!f) return finish({ ok: false, cancelled: true });
+          const meta = { ok: true, name: f.name, mime: f.type, size: f.size };
+          if (f.size > 256 * 1024) return finish({ ...meta, text: '' });
+          try { finish({ ...meta, text: await f.text() }); } catch (e) { finish({ ok: false, message: e.message }); }
+        });
+        document.body.appendChild(input);
+        input.click();
+      });
+    },
+
+    /** Teilen als Datei (Web Share Level 2); sonst ehrlich: Download statt Teilen. */
+    async shareTextFile({ name, mime, text }) {
+      try {
+        const file = new File([text], name, { type: mime });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: name });
+          return { ok: true, message: 'Geteilt.' };
+        }
+      } catch (e) {
+        if (e.name === 'AbortError') return { ok: false, message: 'Teilen abgebrochen.' };
+      }
+      const r = await this.saveTextFile({ name, mime, text });
+      return r.ok ? { ok: true, message: `Dieser Browser kann keine Dateien teilen – ich habe „${name}“ stattdessen heruntergeladen.` } : r;
+    },
+
     async setFlashlight(on) {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {

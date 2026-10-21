@@ -8,6 +8,8 @@ import { createTimerManager } from './core/timers.js';
 import { createAssistant } from './core/assistant.js';
 import { createWakeController } from './core/wake-controller.js';
 import { formatDuration, loadNotes } from './core/skills.js';
+import { dueReminders, markDone, formatWhen } from './core/reminders.js';
+import { decideListen, parseListenUrl } from './core/listen-launch.js';
 import { createSentenceChunker } from './core/sentences.js';
 import { createWebStorageAdapter } from './adapters/web-storage.js';
 import { createWebTTS } from './adapters/web-tts.js';
@@ -225,25 +227,58 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
     view.addMessage(reply);
     if (reply.confirmResolved) { openCards.get(reply.confirmResolved)?.closeCard?.(); openCards.delete(reply.confirmResolved); }
     if (reply.memoryChanged && !$('#view-settings').classList.contains('hidden')) settingsView.refreshMemory();
-    if (reply.confirm) {
-      const cardId = reply.id;
-      openCards.set(cardId, view.addConfirmCard(reply.confirm, {
-        onYes: async () => {
-          openCards.delete(cardId);
-          const r = await assistant.confirmAction(reply.confirm.action);
-          if (r) { view.addMessage(r); await say(r.text); }
-        },
-        onNo: async () => {
-          const r = assistant.cancelAction();
-          if (r) { view.addMessage(r); await say(r.text); }
-        }
-      }));
-    }
+    if (reply.confirm) attachCard(reply);
     view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
     await say(reply.text);
   }
   if (myTurn === turn && !busy) { wake.resume('turn', { delayMs: WAKE_RESUME_AFTER_TTS_MS }); idle(); }
   return reply;
+}
+
+/**
+ * Ja/Nein- bzw. Auswahlkarte zu einer Antwort anzeigen. Das Ergebnis eines „Ja“ kann selbst wieder
+ * eine Karte tragen (z. B. App-Auswahl nach der zentralen Karte) – dann folgt die nächste Karte.
+ */
+function attachCard(reply) {
+  const cardId = reply.id;
+  const after = async (r) => {
+    if (!r) return;
+    view.addMessage(r);
+    if (r.confirm) attachCard(r);
+    await say(r.text);
+  };
+  openCards.set(cardId, view.addConfirmCard(reply.confirm, {
+    onYes: async () => {
+      openCards.delete(cardId);
+      await after(await assistant.confirmAction(reply.confirm.action));
+    },
+    onChoose: async (i) => {
+      openCards.delete(cardId);
+      const c = reply.confirm.choices?.[i];
+      if (c) await after(await assistant.confirmAction(c.action));
+    },
+    onNo: async () => {
+      openCards.delete(cardId);
+      await after(assistant.cancelAction());
+    }
+  }));
+}
+
+/** Fällige Erinnerungen melden (Browser) bzw. still abhaken (Android hat sie schon gezeigt). */
+function checkReminders() {
+  const due = dueReminders(store, new Date());
+  if (!due.length) return;
+  markDone(store, due.map((r) => r.id));
+  if (device.reminders) return;
+  for (const r of due) {
+    const late = Date.now() - Date.parse(r.at) > 2 * 60000;
+    beep({ freq: 880, times: 3 });
+    vibrate([300, 150, 300]);
+    const text = late ? `Verpasste Erinnerung (${formatWhen(new Date(r.at))}): ${r.text}` : `Erinnerung: ${r.text}`;
+    const msg = assistant.add('assistant', text, { source: 'system', reminder: true });
+    view.addMessage(msg);
+    say(msg.text);
+  }
 }
 
 // ---------- Morgen-Briefing ----------
@@ -324,6 +359,8 @@ async function maybeAutoBriefing() {
     settings = loadSettings(store);
     const cfg = settings.briefing;
     if ((!cfg.enabled && !settings.evening.enabled) || !persona.onboarded || busy) return;
+    // „Jarvis fragen“ hat Vorrang: wer gerade fragen will, bekommt kein Briefing dazwischen (kommt beim nächsten Öffnen)
+    if (listening || Date.now() - listenRequestedAt < 5000) return;
     const nowMs = Date.now();
     const today = dayKey(nowMs);
     if (nativeBriefing) {
@@ -391,6 +428,27 @@ function onNativeLaunch(r) {
 }
 
 let listening = false;
+// ---------- v0.9 Stufe 0: „Jarvis fragen“ ----------
+let listenRequestedAt = 0;
+
+/** Start abholen: Android über das Plugin, PWA über ?zuhoeren=1 (danach aus der Adresse entfernt). */
+async function consumeListenLaunch() {
+  if (device.listenLaunch?.consume) return (await device.listenLaunch.consume()) || null;
+  const u = parseListenUrl(location.href);
+  if (u.cleanUrl !== null) { try { history.replaceState(null, '', u.cleanUrl); } catch { /* egal */ } }
+  return u.listen ? { listen: true, opened: false } : null;
+}
+
+/** Zuhören, wenn angefordert. Normaler Start (mit „Beim Öffnen sofort zuhören“) lässt dem Briefing kurz den Vortritt. */
+function onListenLaunch(launch) {
+  if (!launch || (!launch.listen && !launch.opened)) return;
+  const go = () => {
+    const d = decideListen(launch, settings, { onboarded: persona.onboarded, busy, listening, hidden: document.hidden });
+    if (d.listen) onMic();
+  };
+  if (launch.listen) go(); else setTimeout(go, 1200);
+}
+
 async function onMic() {
   if (!stt.isSupported()) return view.toast('Spracherkennung wird hier nicht unterstützt. Bitte Chrome verwenden.');
   if (!window.isSecureContext) return view.toast('Das Mikrofon funktioniert nur über HTTPS.');
@@ -538,6 +596,11 @@ function init() {
 
   timers.restore();
   setInterval(() => view.updateTimerChip(timers.list(), formatDuration), 1000);
+  // v0.9 W4: Erinnerungen. Android meldet sie als Benachrichtigung (auch bei geschlossener App) – hier nur
+  // als erledigt markieren. Im Browser meldet Jarvis sie selbst, solange die App offen ist; verpasste beim Öffnen.
+  checkReminders();
+  setInterval(() => { if (!document.hidden) checkReminders(); }, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
   view.updateTimerChip(timers.list(), formatDuration);
 
   if (settings.wakeWord) setWake(true); // Chrome fragt ggf. nach Mikrofon-Erlaubnis
@@ -548,7 +611,15 @@ function init() {
 
   // Morgen-Briefing: beim ersten Öffnen nach dem Aufwachen (bzw. aus der Benachrichtigung)
   (async () => {
+    // v0.9 Stufe 0: zuerst schauen, ob Jarvis zum Fragen geöffnet wurde (Kachel/Verknüpfung/jarvis://zuhoeren)
+    const firstLaunch = await consumeListenLaunch();
+    if (firstLaunch?.listen) listenRequestedAt = Date.now();
     await maybeAutoBriefing(); // holt auch einen Start aus der Benachrichtigung ab
+    onListenLaunch(firstLaunch);
+    device.listenLaunch?.onLaunch?.(async (ev) => {
+      if (ev?.listen) listenRequestedAt = Date.now(); // vor dem Briefing-Check beim Zurückkehren
+      onListenLaunch(await device.listenLaunch.consume());
+    });
     nativeBriefing?.onLaunch?.(async () => {
       const r = await nativeBriefing.consumeLaunch();
       if (r?.requested) onNativeLaunch(r);

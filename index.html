@@ -54,155 +54,257 @@
     </header>
 
     <form id="settings-form" class="settings-form" autocomplete="off">
-      <fieldset>
-        <legend>KI-Anbieter</legend>
-        <label>Anbieter
-          <select id="set-provider">
-            <option value="xai">xAI (Grok)</option>
-            <option value="openai">OpenAI</option>
-            <option value="gemini">Google Gemini (kostenlos)</option>
-            <option value="custom">Eigene OpenAI-kompatible URL</option>
-          </select>
-        </label>
-        <label id="row-baseurl" class="hidden">Basis-URL
-          <input id="set-baseurl" type="url" placeholder="https://mein-server.de/v1">
-        </label>
-        <label>API-Schlüssel
-          <span class="row">
-            <input id="set-apikey" type="password" placeholder="Schlüssel hier einfügen" spellcheck="false">
-            <button id="btn-togglekey" type="button" class="icon-btn" aria-label="Schlüssel anzeigen">👁️</button>
-          </span>
-        </label>
-        <label>Modell
-          <span class="row">
-            <select id="set-model-select" aria-label="Modell wählen"></select>
-            <button id="btn-loadmodels" type="button" class="btn small">Laden</button>
-          </span>
-        </label>
-        <label id="row-custom-model" class="hidden">Eigenes Modell
-          <input id="set-model-custom" type="text" placeholder="Modellname eingeben" spellcheck="false" autocomplete="off">
-        </label>
-        <p id="key-hint" class="hint"></p>
-        <p class="hint">🔒 Der Schlüssel wird nur auf diesem Gerät gespeichert (localStorage) und direkt an den gewählten Anbieter gesendet.</p>
-        <button id="btn-test" type="button" class="btn">Verbindung testen</button>
-        <p id="test-result" class="hint"></p>
-      </fieldset>
-
-      <fieldset>
-        <legend>Name &amp; Stimme</legend>
-        <label>Name des Assistenten
-          <input id="set-name" type="text" maxlength="30" placeholder="Jarvis" spellcheck="false">
-        </label>
-        <p class="hint">Der Name ist auch das Wake-Word: „Hey <span class="name-ref">Jarvis</span>“.</p>
-        <label>Stimme
-          <select id="set-voice"><option value="">Automatisch (beste deutsche Stimme)</option></select>
-        </label>
-        <label>Sprechtempo <output id="out-rate">1.0</output>
-          <input id="set-rate" type="range" min="0.5" max="2" step="0.1" value="1">
-        </label>
-        <label>Tonhöhe <output id="out-pitch">1.0</output>
-          <input id="set-pitch" type="range" min="0" max="2" step="0.1" value="1">
-        </label>
-        <button id="btn-preview" type="button" class="btn">▶ Vorhören</button>
-        <label class="switch"><input id="set-speak" type="checkbox"> Antworten vorlesen</label>
-        <label class="switch"><input id="set-wake" type="checkbox"> Wake-Word „Hey <span class="name-ref">Jarvis</span>“ (nur bei offener App)</label>
-        <label class="switch native-only"><input id="set-wake-mute" type="checkbox"> Startton der Spracherkennung beim Wake-Word unterdrücken</label>
-        <p class="hint native-only">Dafür werden System- und (wenn gerade nichts läuft) Medienton beim Start der Erkennung etwa eine Sekunde stummgeschaltet und danach wiederhergestellt. Benachrichtigungen und Klingelton bleiben unberührt; bei „Nicht stören“ oder während eines Anrufs passiert nichts.</p>
-      </fieldset>
-
-      <fieldset id="briefing-fieldset">
-        <legend>Morgen-Briefing</legend>
-        <label class="switch"><input id="set-brief-enabled" type="checkbox"> Morgen-Briefing beim ersten Öffnen nach dem Aufwachen</label>
-        <label>„Aufgewacht“ heißt: vorher mindestens
-          <select id="set-brief-gap"></select>
-        </label>
-        <label>Automatisch höchstens bis
-          <select id="set-brief-latest"></select>
-        </label>
-        <p class="hint">Zwischen 23 und 3 Uhr startet es nie von selbst. „Guten Morgen“, „Briefing“ oder „Was steht heute an?“ geht jederzeit.</p>
-        <p class="hint">Inhalte:</p>
-        <label class="switch"><input id="set-brief-weather" type="checkbox"> Wetter (aktueller Standort)</label>
-        <label class="switch native-only"><input id="set-brief-calendar" type="checkbox"> Termine aus dem Kalender</label>
-        <label class="switch"><input id="set-brief-news" type="checkbox"> Nachrichten (tagesschau.de)</label>
-        <label class="switch"><input id="set-brief-battery" type="checkbox"> Akku (nur wenn er knapp ist)</label>
-        <label class="switch"><input id="set-brief-notes" type="checkbox"> Notizen &amp; laufende Timer</label>
-        <p class="hint">Nachrichten-Rubriken (keine gewählt = alle Meldungen):</p>
-        <div id="brief-ressorts" class="ressorts"></div>
-        <p class="hint">Per Sprache: „Nachrichten nur Sport und Wirtschaft“, „Alle Nachrichten“, „Briefing aus“.</p>
-        <p id="brief-loc-status" class="hint"></p>
-        <button id="btn-brief-location" type="button" class="btn small">📍 Standort fürs Wetter erlauben</button>
-        <div class="native-only">
-          <label class="switch"><input id="set-brief-bg" type="checkbox"> Im Hintergrund bereithalten (meldet sich beim ersten Entsperren)</label>
-          <label class="switch"><input id="set-brief-speak" type="checkbox"> Im Hintergrund laut vorlesen (nicht bei Anruf, lautlos oder „Nicht stören“)</label>
-          <label class="switch"><input id="set-brief-titles" type="checkbox"> Termintitel nennen (Vorlesen &amp; Benachrichtigung)</label>
-          <p id="brief-native-status" class="hint"></p>
-          <div class="row wrap">
-            <button id="btn-brief-notif" type="button" class="btn small">🔔 Benachrichtigungen erlauben</button>
-            <button id="btn-brief-cal" type="button" class="btn small">📅 Kalender erlauben</button>
-            <button id="btn-brief-battery" type="button" class="btn small">🔋 Akku: nicht einschränken</button>
-            <button id="btn-brief-appsettings" type="button" class="btn small">⚙️ App-Einstellungen</button>
-          </div>
-          <p class="hint">Samsung: Einstellungen → Apps → Jarvis → Akku → „Nicht eingeschränkt“. Außerdem unter Akku → Hintergrundnutzungslimits Jarvis aus „Schlafende Apps“ und „Tief schlafende Apps“ entfernen.</p>
+      <p class="hint settings-intro">Tippen Sie auf einen Bereich, um ihn auf- oder zuzuklappen.</p>
+      <details class="set-group" id="grp-general">
+        <summary><span class="grp-icon" aria-hidden="true">⚙️</span><span class="grp-text"><span class="grp-title">Allgemein</span><span class="grp-sub">KI-Anbieter, Schlüssel, Name, Stimme</span></span></summary>
+        <div class="grp-body">
+          <fieldset>
+            <legend>KI-Anbieter</legend>
+            <label>Anbieter
+              <select id="set-provider">
+                <option value="xai">xAI (Grok)</option>
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Google Gemini (kostenlos)</option>
+                <option value="custom">Eigene OpenAI-kompatible URL</option>
+              </select>
+            </label>
+            <label id="row-baseurl" class="hidden">Basis-URL
+              <input id="set-baseurl" type="url" placeholder="https://mein-server.de/v1">
+            </label>
+            <label>API-Schlüssel
+              <span class="row">
+                <input id="set-apikey" type="password" placeholder="Schlüssel hier einfügen" spellcheck="false">
+                <button id="btn-togglekey" type="button" class="icon-btn" aria-label="Schlüssel anzeigen">👁️</button>
+              </span>
+            </label>
+            <label>Modell
+              <span class="row">
+                <select id="set-model-select" aria-label="Modell wählen"></select>
+                <button id="btn-loadmodels" type="button" class="btn small">Laden</button>
+              </span>
+            </label>
+            <label id="row-custom-model" class="hidden">Eigenes Modell
+              <input id="set-model-custom" type="text" placeholder="Modellname eingeben" spellcheck="false" autocomplete="off">
+            </label>
+            <p id="key-hint" class="hint"></p>
+            <p class="hint">🔒 Der Schlüssel wird nur auf diesem Gerät gespeichert (localStorage) und direkt an den gewählten Anbieter gesendet.</p>
+            <button id="btn-test" type="button" class="btn">Verbindung testen</button>
+            <p id="test-result" class="hint"></p>
+          </fieldset>
+          <fieldset>
+            <legend>Name &amp; Stimme</legend>
+            <label>Name des Assistenten
+              <input id="set-name" type="text" maxlength="30" placeholder="Jarvis" spellcheck="false">
+            </label>
+            <p class="hint">Der Name ist auch das Wake-Word: „Hey <span class="name-ref">Jarvis</span>“.</p>
+            <label>Stimme
+              <select id="set-voice"><option value="">Automatisch (beste deutsche Stimme)</option></select>
+            </label>
+            <label>Sprechtempo <output id="out-rate">1.0</output>
+              <input id="set-rate" type="range" min="0.5" max="2" step="0.1" value="1">
+            </label>
+            <label>Tonhöhe <output id="out-pitch">1.0</output>
+              <input id="set-pitch" type="range" min="0" max="2" step="0.1" value="1">
+            </label>
+            <button id="btn-preview" type="button" class="btn">▶ Vorhören</button>
+            <label class="switch"><input id="set-speak" type="checkbox"> Antworten vorlesen</label>
+          </fieldset>
         </div>
-        <button id="btn-brief-test" type="button" class="btn">▶ Jetzt testen</button>
-      </fieldset>
-
-      <fieldset id="evening-fieldset">
-        <legend>Abendzusammenfassung</legend>
-        <label class="switch"><input id="set-eve-enabled" type="checkbox"> Tagesrückblick beim ersten Öffnen am Abend</label>
-        <label>Ab
-          <select id="set-eve-start"></select>
-        </label>
-        <p class="hint">Einmal pro Abend, bis 23 Uhr. „Wie war mein Tag?“, „Tagesrückblick“ oder „Abendzusammenfassung“ geht jederzeit; „Abendzusammenfassung aus“ schaltet sie ab.</p>
-        <p class="hint">Inhalte:</p>
-        <label class="switch"><input id="set-eve-chats" type="checkbox"> Gespräche von heute (nur Anzahl &amp; Themen)</label>
-        <label class="switch"><input id="set-eve-notes" type="checkbox"> Heute notiert</label>
-        <label class="switch"><input id="set-eve-timers" type="checkbox"> Abgelaufene Timer</label>
-        <label class="switch native-only"><input id="set-eve-calendar" type="checkbox"> Erste Termine morgen</label>
-        <label class="switch"><input id="set-eve-weather" type="checkbox"> Wetter morgen</label>
-        <label class="switch"><input id="set-eve-news" type="checkbox"> Nachrichten des Tages (Rubriken wie beim Briefing)</label>
-        <p class="hint native-only">Hintergrund und Vorlesen richten sich nach den Schaltern beim Morgen-Briefing.</p>
-        <button id="btn-eve-test" type="button" class="btn">▶ Jetzt testen</button>
-      </fieldset>
-
-      <fieldset id="memory-fieldset">
-        <legend>Gedächtnis</legend>
-        <p class="hint">Was Jarvis über Sie weiß. Per Sprache: „Merk dir, dass …“, „Was weißt du über mich?“, „Vergiss, dass …“, „Vergiss das“ (direkt danach). Notizen („Notiere …“, „Schreib auf …“) sind getrennt.</p>
-        <label class="switch"><input id="set-mem-ai" type="checkbox"> Gedächtnis an die KI senden (passende Einträge bei jeder KI-Frage)</label>
-        <p class="hint">⚠️ Beim kostenlosen Gemini-Zugang darf Google Eingaben laut seinen Bedingungen zur Verbesserung seiner Dienste nutzen, auch durch menschliche Prüfer. Schalten Sie das aus, wenn Ihnen das zu viel ist – „Was weißt du über mich?“ funktioniert trotzdem. Passwörter, PINs, IBAN und Kartennummern speichert Jarvis nie.</p>
-        <p class="hint web-only">Im Browser liegt das Gedächtnis unverschlüsselt (localStorage); andere Seiten unter ungeteilte.github.io könnten es lesen. In der Android-App ist es verschlüsselt.</p>
-        <div class="row">
-          <input id="mem-new" type="text" maxlength="200" placeholder="z. B. Ich streame dienstags um 20 Uhr">
-          <button id="btn-mem-add" type="button" class="btn">Merken</button>
+      </details>
+      <details class="set-group" id="grp-speech">
+        <summary><span class="grp-icon" aria-hidden="true">🎙️</span><span class="grp-text"><span class="grp-title">Sprache &amp; Wake-Word</span><span class="grp-sub">Wake-Word, Startton, Schnell fragen</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="wake-fieldset">
+            <legend>Wake-Word</legend>
+            <label class="switch"><input id="set-wake" type="checkbox"> Wake-Word „Hey <span class="name-ref">Jarvis</span>“ (nur bei offener App)</label>
+            <label class="switch native-only"><input id="set-wake-mute" type="checkbox"> Startton der Spracherkennung beim Wake-Word unterdrücken</label>
+            <p class="hint native-only">Dafür werden System- und (wenn gerade nichts läuft) Medienton beim Start der Erkennung etwa eine Sekunde stummgeschaltet und danach wiederhergestellt. Benachrichtigungen und Klingelton bleiben unberührt; bei „Nicht stören“ oder während eines Anrufs passiert nichts.</p>
+          </fieldset>
+          <fieldset id="listen-fieldset" class="listen-box">
+            <legend>Schnell fragen</legend>
+            <p class="hint">Jarvis öffnen und sofort zuhören – per Kachel, Verknüpfung, Seitentaste oder „Hey Google“. Jarvis hört nie im Hintergrund mit.</p>
+            <label class="switch"><input id="set-listen-open" type="checkbox"> Beim Öffnen sofort zuhören (Seitentaste, „Hey Google, öffne Jarvis“)</label>
+            <div class="row wrap native-only">
+              <button id="btn-listen-tile" type="button" class="btn small">➕ Kachel hinzufügen</button>
+              <button id="btn-listen-pin" type="button" class="btn small">🏠 Verknüpfung anlegen</button>
+            </div>
+            <p id="listen-status" class="hint" aria-live="polite"></p>
+            <details id="listen-guide" class="guide">
+              <summary>Anleitung: Kachel, Startbildschirm, „Hey Google“, Bixby, Seitentaste</summary>
+              <ul id="listen-guide-list" class="guide-list"></ul>
+            </details>
+          </fieldset>
         </div>
-        <p id="mem-status" class="hint" aria-live="polite"></p>
-        <ul id="mem-list" class="mem-list"></ul>
-        <div class="row wrap">
-          <button id="btn-mem-migrate" type="button" class="btn">Notizen ins Gedächtnis übernehmen</button>
-          <button id="btn-mem-export" type="button" class="btn">Exportieren</button>
-          <button id="btn-mem-clear" type="button" class="btn danger">Gedächtnis löschen</button>
+      </details>
+      <details class="set-group" id="grp-briefing">
+        <summary><span class="grp-icon" aria-hidden="true">🌅</span><span class="grp-text"><span class="grp-title">Morgen-Briefing &amp; Abend</span><span class="grp-sub">Hintergrund, Uhrzeiten, Nachrichten, Tagesrückblick</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="briefing-fieldset">
+            <legend>Morgen-Briefing</legend>
+            <label class="switch"><input id="set-brief-enabled" type="checkbox"> Morgen-Briefing beim ersten Öffnen nach dem Aufwachen</label>
+            <label>„Aufgewacht“ heißt: vorher mindestens
+              <select id="set-brief-gap"></select>
+            </label>
+            <label>Automatisch höchstens bis
+              <select id="set-brief-latest"></select>
+            </label>
+            <p class="hint">Zwischen 23 und 3 Uhr startet es nie von selbst. „Guten Morgen“, „Briefing“ oder „Was steht heute an?“ geht jederzeit.</p>
+            <p class="hint">Inhalte:</p>
+            <label class="switch"><input id="set-brief-weather" type="checkbox"> Wetter (aktueller Standort)</label>
+            <label class="switch native-only"><input id="set-brief-calendar" type="checkbox"> Termine aus dem Kalender</label>
+            <label class="switch"><input id="set-brief-news" type="checkbox"> Nachrichten (tagesschau.de)</label>
+            <label class="switch"><input id="set-brief-battery" type="checkbox"> Akku (nur wenn er knapp ist)</label>
+            <label class="switch"><input id="set-brief-notes" type="checkbox"> Notizen &amp; laufende Timer</label>
+            <p class="hint">Nachrichten-Rubriken (keine gewählt = alle Meldungen):</p>
+            <div id="brief-ressorts" class="ressorts"></div>
+            <p class="hint">Per Sprache: „Nachrichten nur Sport und Wirtschaft“, „Alle Nachrichten“, „Briefing aus“.</p>
+            <p id="brief-loc-status" class="hint"></p>
+            <button id="btn-brief-location" type="button" class="btn small">📍 Standort fürs Wetter erlauben</button>
+            <div class="native-only">
+              <label class="switch"><input id="set-brief-bg" type="checkbox"> Im Hintergrund bereithalten (meldet sich beim ersten Entsperren)</label>
+              <label class="switch"><input id="set-brief-speak" type="checkbox"> Im Hintergrund laut vorlesen (nicht bei Anruf, lautlos oder „Nicht stören“)</label>
+              <label class="switch"><input id="set-brief-titles" type="checkbox"> Termintitel nennen (Vorlesen &amp; Benachrichtigung)</label>
+              <p id="brief-native-status" class="hint"></p>
+              <div class="row wrap">
+                <button id="btn-brief-notif" type="button" class="btn small">🔔 Benachrichtigungen erlauben</button>
+                <button id="btn-brief-cal" type="button" class="btn small">📅 Kalender erlauben</button>
+                <button id="btn-brief-battery" type="button" class="btn small">🔋 Akku: nicht einschränken</button>
+                <button id="btn-brief-appsettings" type="button" class="btn small">⚙️ App-Einstellungen</button>
+              </div>
+              <p class="hint">Samsung: Einstellungen → Apps → Jarvis → Akku → „Nicht eingeschränkt“. Außerdem unter Akku → Hintergrundnutzungslimits Jarvis aus „Schlafende Apps“ und „Tief schlafende Apps“ entfernen.</p>
+            </div>
+            <button id="btn-brief-test" type="button" class="btn">▶ Jetzt testen</button>
+          </fieldset>
+          <fieldset id="evening-fieldset">
+            <legend>Abendzusammenfassung</legend>
+            <label class="switch"><input id="set-eve-enabled" type="checkbox"> Tagesrückblick beim ersten Öffnen am Abend</label>
+            <label>Ab
+              <select id="set-eve-start"></select>
+            </label>
+            <p class="hint">Einmal pro Abend, bis 23 Uhr. „Wie war mein Tag?“, „Tagesrückblick“ oder „Abendzusammenfassung“ geht jederzeit; „Abendzusammenfassung aus“ schaltet sie ab.</p>
+            <p class="hint">Inhalte:</p>
+            <label class="switch"><input id="set-eve-chats" type="checkbox"> Gespräche von heute (nur Anzahl &amp; Themen)</label>
+            <label class="switch"><input id="set-eve-notes" type="checkbox"> Heute notiert</label>
+            <label class="switch"><input id="set-eve-timers" type="checkbox"> Abgelaufene Timer</label>
+            <label class="switch native-only"><input id="set-eve-calendar" type="checkbox"> Erste Termine morgen</label>
+            <label class="switch"><input id="set-eve-weather" type="checkbox"> Wetter morgen</label>
+            <label class="switch"><input id="set-eve-news" type="checkbox"> Nachrichten des Tages (Rubriken wie beim Briefing)</label>
+            <p class="hint native-only">Hintergrund und Vorlesen richten sich nach den Schaltern beim Morgen-Briefing.</p>
+            <button id="btn-eve-test" type="button" class="btn">▶ Jetzt testen</button>
+          </fieldset>
         </div>
-        <details id="mem-import-box">
-          <summary>Importieren (JSON einfügen)</summary>
-          <textarea id="mem-import" rows="4" placeholder='{"items":[{"text":"…"}]}'></textarea>
-          <button id="btn-mem-import" type="button" class="btn">Importieren</button>
-        </details>
-        <p class="hint">Vorlieben (gelten für KI-Antworten; per Sprache: „Antworte kürzer“, „Duz mich“, „Weniger Witze“):</p>
-        <label>Antwortlänge <select id="set-pref-len"></select></label>
-        <label>Anrede <select id="set-pref-anrede"></select></label>
-        <label>Humor <select id="set-pref-humor"></select></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Daten</legend>
-        <button id="btn-shownotes" type="button" class="btn">Notizen anzeigen</button>
-        <button id="btn-clearnotes" type="button" class="btn danger">Notizen löschen</button>
-        <button id="btn-clearchat" type="button" class="btn danger">Chatverlauf löschen</button>
-        <pre id="notes-view" class="notes hidden"></pre>
-      </fieldset>
-
-      <button type="submit" class="btn primary">Speichern</button>
-      <p class="hint center">Jarvis PWA · v1</p>
+      </details>
+      <details class="set-group" id="grp-memory">
+        <summary><span class="grp-icon" aria-hidden="true">🧠</span><span class="grp-text"><span class="grp-title">Gedächtnis &amp; Notizen</span><span class="grp-sub">Was Jarvis weiß, Vorlieben, Notizen</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="memory-fieldset">
+            <legend>Gedächtnis</legend>
+            <p class="hint">Was Jarvis über Sie weiß. Per Sprache: „Merk dir, dass …“, „Was weißt du über mich?“, „Vergiss, dass …“, „Vergiss das“ (direkt danach). Notizen („Notiere …“, „Schreib auf …“) sind getrennt.</p>
+            <label class="switch"><input id="set-mem-ai" type="checkbox"> Gedächtnis an die KI senden (passende Einträge bei jeder KI-Frage)</label>
+            <p class="hint">⚠️ Beim kostenlosen Gemini-Zugang darf Google Eingaben laut seinen Bedingungen zur Verbesserung seiner Dienste nutzen, auch durch menschliche Prüfer. Schalten Sie das aus, wenn Ihnen das zu viel ist – „Was weißt du über mich?“ funktioniert trotzdem. Passwörter, PINs, IBAN und Kartennummern speichert Jarvis nie.</p>
+            <p class="hint web-only">Im Browser liegt das Gedächtnis unverschlüsselt (localStorage); andere Seiten unter ungeteilte.github.io könnten es lesen. In der Android-App ist es verschlüsselt.</p>
+            <div class="row">
+              <input id="mem-new" type="text" maxlength="200" placeholder="z. B. Ich streame dienstags um 20 Uhr">
+              <button id="btn-mem-add" type="button" class="btn">Merken</button>
+            </div>
+            <p id="mem-status" class="hint" aria-live="polite"></p>
+            <ul id="mem-list" class="mem-list"></ul>
+            <div class="row wrap">
+              <button id="btn-mem-migrate" type="button" class="btn">Notizen ins Gedächtnis übernehmen</button>
+              <button id="btn-mem-export" type="button" class="btn">Exportieren</button>
+              <button id="btn-mem-clear" type="button" class="btn danger">Gedächtnis löschen</button>
+            </div>
+            <details id="mem-import-box">
+              <summary>Importieren (JSON einfügen)</summary>
+              <textarea id="mem-import" rows="4" placeholder='{"items":[{"text":"…"}]}'></textarea>
+              <button id="btn-mem-import" type="button" class="btn">Importieren</button>
+            </details>
+            <p class="hint">Vorlieben (gelten für KI-Antworten; per Sprache: „Antworte kürzer“, „Duz mich“, „Weniger Witze“):</p>
+            <label>Antwortlänge <select id="set-pref-len"></select></label>
+            <label>Anrede <select id="set-pref-anrede"></select></label>
+            <label>Humor <select id="set-pref-humor"></select></label>
+          </fieldset>
+          <fieldset id="notes-fieldset">
+            <legend>Notizen</legend>
+            <p class="hint">„Notiere …“, „Lies meine Notizen vor“, „Lösche die Notiz …“; „Rückgängig“ holt Gelöschtes 2 Minuten lang zurück.</p>
+            <div class="row wrap">
+              <button id="btn-shownotes" type="button" class="btn">Notizen anzeigen</button>
+              <button id="btn-clearnotes" type="button" class="btn danger">Notizen löschen</button>
+            </div>
+            <pre id="notes-view" class="notes hidden"></pre>
+          </fieldset>
+        </div>
+      </details>
+      <details class="set-group" id="grp-tools">
+        <summary><span class="grp-icon" aria-hidden="true">🧰</span><span class="grp-text"><span class="grp-title">Werkzeuge &amp; Berechtigungen</span><span class="grp-sub">Erinnerungen, genaue Alarme, Akku</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="tools-fieldset">
+            <legend>Werkzeuge &amp; Berechtigungen</legend>
+            <p class="hint">Lesen geht sofort. Alles, was nach außen wirkt (Apps öffnen, Links, Dateien teilen, Kalender), fragt vorher nach – erst recht, nachdem Jarvis Inhalte aus dem Netz oder einer Datei gelesen hat.</p>
+            <p class="hint"><strong>Wecker &amp; Erinnerungen</strong></p>
+            <p id="exact-status" class="hint native-only" aria-live="polite"></p>
+            <div class="row wrap native-only">
+              <button id="btn-exact" type="button" class="btn small">⏰ Genaue Erinnerungen erlauben</button>
+              <button id="btn-tools-notif" type="button" class="btn small">🔔 Benachrichtigungen erlauben</button>
+            </div>
+            <p class="hint native-only">Ohne „Wecker &amp; Erinnerungen“ kommen Erinnerungen ungefähr pünktlich (Android kann sie um einige Minuten verschieben) – Jarvis sagt das beim Stellen dazu.</p>
+            <p class="hint web-only">Im Browser erinnert Jarvis nur, solange die Seite offen ist; verpasste Erinnerungen meldet Jarvis beim nächsten Öffnen.</p>
+            <div class="native-only">
+              <p class="hint"><strong>Akku</strong> – damit Briefing und Erinnerungen zuverlässig kommen: Einstellungen → Apps → Jarvis → Akku → „Nicht eingeschränkt“.</p>
+              <div class="row wrap">
+                <button id="btn-tools-battery" type="button" class="btn small">🔋 Akku: nicht einschränken</button>
+                <button id="btn-tools-appsettings" type="button" class="btn small">⚙️ App-Berechtigungen</button>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+      </details>
+      <details class="set-group" id="grp-notif">
+        <summary><span class="grp-icon" aria-hidden="true">🔔</span><span class="grp-text"><span class="grp-title">Benachrichtigungen lesen</span><span class="grp-sub">kommt in v0.9.1</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="notif-fieldset" class="coming-soon" disabled aria-disabled="true">
+            <legend>Benachrichtigungen lesen</legend>
+            <p class="hint soon-note">🚧 Kommt in v0.9.1 – hier noch ohne Funktion. Jarvis liest in dieser Version keine Benachrichtigungen.</p>
+            <label class="switch"><input id="set-notif-ai" type="checkbox" disabled> Benachrichtigungen an die KI senden</label>
+            <p class="hint">Erlaubte Apps (nur diese würde Jarvis lesen):</p>
+            <div id="notif-apps" class="ressorts">
+              <label><input type="checkbox" disabled> WhatsApp</label>
+              <label><input type="checkbox" disabled> Signal</label>
+              <label><input type="checkbox" disabled> Gmail</label>
+              <label><input type="checkbox" disabled> Kalender</label>
+            </div>
+          </fieldset>
+        </div>
+      </details>
+      <details class="set-group" id="grp-updates">
+        <summary><span class="grp-icon" aria-hidden="true">⬇️</span><span class="grp-text"><span class="grp-title">Updates</span><span class="grp-sub">App-Updates prüfen und installieren</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="upd-web" class="web-only">
+            <legend>Web-Version</legend>
+            <p class="hint">Die Web-Version aktualisiert sich selbst beim nächsten Öffnen.</p>
+          </fieldset>
+          <div id="upd-slot"></div>
+        </div>
+      </details>
+      <details class="set-group" id="grp-privacy">
+        <summary><span class="grp-icon" aria-hidden="true">🔒</span><span class="grp-text"><span class="grp-title">Datenschutz &amp; Info</span><span class="grp-sub">Was wohin geht, Chat löschen, Version</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="privacy-fieldset">
+            <legend>Daten &amp; Datenschutz</legend>
+            <ul class="guide-list">
+              <li>API-Schlüssel, Notizen, Gedächtnis und Erinnerungen bleiben auf diesem Gerät (in der Android-App verschlüsselt).</li>
+              <li>Ins Netz gehen nur: Ihre Fragen an den gewählten KI-Anbieter, Wetter (open-meteo.com), Nachrichten (tagesschau.de) und – in der App – Updates von github.com/Ungeteilte/jarvis.</li>
+              <li>Links öffnet Jarvis nie von selbst, sondern erst nach Ihrem „Ja“.</li>
+              <li>Das Mikrofon läuft nur bei offener App (Wake-Word, Mikrofon-Knopf, „Jarvis fragen“).</li>
+            </ul>
+            <button id="btn-clearchat" type="button" class="btn danger">Chatverlauf löschen</button>
+          </fieldset>
+        </div>
+      </details>
+      <div class="settings-save">
+        <button type="submit" class="btn primary">Speichern</button>
+      </div>
+      <p id="app-version" class="hint center">Jarvis 0.9</p>
     </form>
   </section>
 

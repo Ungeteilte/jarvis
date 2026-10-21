@@ -48,6 +48,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   speak: true,
   wakeWord: false,
   wakeMuteBeep: true, // Android: Startton der Erkennung beim Wake-Word kurz stummschalten
+  listenOnOpen: false, // v0.9 Stufe 0: beim normalen Öffnen (Seitentaste, „Hey Google, öffne Jarvis“) sofort zuhören
   briefing: DEFAULT_BRIEFING,
   evening: DEFAULT_EVENING,
   memoryToAI: true, // Gedächtnis-Einträge mit an die KI senden (abschaltbar)
@@ -66,6 +67,7 @@ export function loadSettings(store) {
     models: { ...DEFAULT_SETTINGS.models, ...(s.models || {}) },
     briefing: normalizeBriefingConfig(s.briefing, RESSORT_IDS),
     wakeMuteBeep: typeof s.wakeMuteBeep === 'boolean' ? s.wakeMuteBeep : DEFAULT_SETTINGS.wakeMuteBeep,
+    listenOnOpen: s.listenOnOpen === true,
     evening: normalizeEveningConfig(s.evening),
     memoryToAI: typeof s.memoryToAI === 'boolean' ? s.memoryToAI : DEFAULT_SETTINGS.memoryToAI,
     prefs: normalizePrefs(s.prefs)
