@@ -140,6 +140,24 @@ export function createNativeDevice() {
     },
 
     // Extra native APIs used by extended tools
+    // ---------- v0.9 W5: Medien, Lautstärke %, Gerätestatus, Kalender-Entwurf ----------
+    async mediaKey(action) {
+      const r = await jcall('mediaKey', { action }, { ok: false, message: 'Musik steuern ist nicht verfügbar.' });
+      return r || { ok: false, message: 'Musik steuern ist nicht verfügbar.' };
+    },
+    async setVolumePercent(percent) {
+      const r = await jcall('setVolumePercent', { percent }, { ok: false, message: 'Lautstärke ist nicht verfügbar.' });
+      return r || { ok: false, message: 'Lautstärke ist nicht verfügbar.' };
+    },
+    async getDeviceStatus() {
+      const r = await jcall('getDeviceStatus', {}, { ok: false, message: 'Gerätestatus ist nicht verfügbar.' });
+      return r || { ok: false, message: 'Gerätestatus ist nicht verfügbar.' };
+    },
+    async calendarDraft({ title, begin, end, location }) {
+      const r = await jcall('calendarDraft', { title, begin, end, location }, { ok: false, message: 'Die Kalender-App ließ sich nicht öffnen.' });
+      return r || { ok: false, message: 'Die Kalender-App ließ sich nicht öffnen.' };
+    },
+
     // ---------- v0.9 W4: Erinnerungen über @capacitor/local-notifications (Kanal reminder_v1) ----------
     // Das Plugin plant nach einem Neustart selbst neu (LocalNotificationRestoreReceiver) und weicht ohne
     // „Wecker & Erinnerungen“-Freigabe auf ungenaue Alarme aus – das sagen wir ehrlich (exact:false).

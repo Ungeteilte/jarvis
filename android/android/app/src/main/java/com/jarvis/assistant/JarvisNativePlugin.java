@@ -33,8 +33,11 @@ import androidx.security.crypto.MasterKeys;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.jarvis.assistant.tools.CalendarDraftSpec;
+import com.jarvis.assistant.tools.DeviceStatusMapper;
 import com.jarvis.assistant.tools.FileLimits;
 import com.jarvis.assistant.tools.LaunchPolicy;
+import com.jarvis.assistant.tools.MediaControl;
 import com.jarvis.assistant.updater.UpdateEngine;
 import com.jarvis.assistant.updater.UpdateEvents;
 import com.jarvis.assistant.updater.UpdateInstaller;
@@ -406,6 +409,136 @@ public class JarvisNativePlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("level", pct / 100.0);
         ret.put("charging", charging);
+        call.resolve(ret);
+    }
+
+    // ---------- v0.9 W5: Medien, Lautstärke in Prozent, Gerätestatus, Kalender-Entwurf ----------
+
+    /** Medientaste an die aktive Wiedergabe (Spotify, YouTube …). Keine Berechtigung nötig. */
+    @PluginMethod
+    public void mediaKey(PluginCall call) {
+        JSObject ret = new JSObject();
+        String action = call.getString("action", "");
+        int code = MediaControl.keyCode(action);
+        if (code < 0) {
+            ret.put("ok", false);
+            ret.put("message", "Unbekannte Medien-Aktion.");
+            call.resolve(ret);
+            return;
+        }
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) {
+            ret.put("ok", false);
+            ret.put("message", "Kein Zugriff auf die Wiedergabe.");
+            call.resolve(ret);
+            return;
+        }
+        if ("pause".equals(action) && !am.isMusicActive()) {
+            ret.put("ok", true);
+            ret.put("idle", true); // „Es läuft gerade nichts.“
+            call.resolve(ret);
+            return;
+        }
+        am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, code));
+        am.dispatchMediaKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, code));
+        ret.put("ok", true);
+        call.resolve(ret);
+    }
+
+    /** Medien-Lautstärke auf Prozent (mit System-Anzeige). */
+    @PluginMethod
+    public void setVolumePercent(PluginCall call) {
+        JSObject ret = new JSObject();
+        AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        Integer p = call.getInt("percent");
+        if (am == null || p == null) {
+            ret.put("ok", false);
+            ret.put("message", am == null ? "Kein Zugriff auf die Lautstärke." : "Es fehlt der Prozentwert.");
+            call.resolve(ret);
+            return;
+        }
+        int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int idx = MediaControl.volumeIndex(p, max);
+        try {
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, idx, AudioManager.FLAG_SHOW_UI);
+            ret.put("ok", true);
+            ret.put("percent", MediaControl.percentOf(idx, max));
+        } catch (SecurityException e) {
+            ret.put("ok", false);
+            ret.put("message", "Android erlaubt das gerade nicht, zum Beispiel wegen Nicht stören.");
+        }
+        call.resolve(ret);
+    }
+
+    /** Gerätestatus im festen Schema (DeviceStatusMapper); jede Abfrage einzeln abgesichert. */
+    @PluginMethod
+    public void getDeviceStatus(PluginCall call) {
+        Context ctx = getContext();
+        Boolean wifi = null, cell = null, bt = null, charging = null;
+        Integer filter = null, battery = null;
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                android.net.NetworkCapabilities nc = cm.getNetworkCapabilities(cm.getActiveNetwork());
+                wifi = nc != null && nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI);
+                cell = nc != null && nc.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR);
+            }
+        } catch (Exception ignored) {}
+        try {
+            // Ab Android 12 ohne Berechtigung; davor kann es eine SecurityException geben → „unbekannt“
+            android.bluetooth.BluetoothManager bm = (android.bluetooth.BluetoothManager) ctx.getSystemService(Context.BLUETOOTH_SERVICE);
+            if (bm != null && bm.getAdapter() != null) bt = bm.getAdapter().isEnabled();
+        } catch (Exception ignored) {}
+        try {
+            android.app.NotificationManager nm = (android.app.NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) filter = nm.getCurrentInterruptionFilter();
+        } catch (Exception ignored) {}
+        try {
+            BatteryManager bmgr = (BatteryManager) ctx.getSystemService(Context.BATTERY_SERVICE);
+            if (bmgr != null) {
+                int lvl = bmgr.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY);
+                battery = lvl >= 0 && lvl <= 100 ? lvl : null;
+                charging = bmgr.isCharging();
+            }
+        } catch (Exception ignored) {}
+        JSObject status = new JSObject();
+        for (java.util.Map.Entry<String, Object> e : DeviceStatusMapper.map(wifi, cell, bt, filter, battery, charging).entrySet()) {
+            status.put(e.getKey(), e.getValue());
+        }
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        ret.put("status", status);
+        call.resolve(ret);
+    }
+
+    /** Kalender-App mit Entwurf öffnen (ACTION_INSERT, keine Schreibberechtigung). */
+    @PluginMethod
+    public void calendarDraft(PluginCall call) {
+        JSObject ret = new JSObject();
+        CalendarDraftSpec spec;
+        try {
+            Double b = call.getDouble("begin");
+            Double e = call.getDouble("end");
+            spec = CalendarDraftSpec.of(call.getString("title"), b == null ? null : b.longValue(), e == null ? null : e.longValue(), call.getString("location"));
+        } catch (IllegalArgumentException ex) {
+            ret.put("ok", false);
+            ret.put("message", ex.getMessage());
+            call.resolve(ret);
+            return;
+        }
+        Intent i = new Intent(CalendarDraftSpec.ACTION_INSERT).setData(android.provider.CalendarContract.Events.CONTENT_URI);
+        for (java.util.Map.Entry<String, Object> x : spec.extras().entrySet()) {
+            if (x.getValue() instanceof Long) i.putExtra(x.getKey(), (Long) x.getValue());
+            else i.putExtra(x.getKey(), String.valueOf(x.getValue()));
+        }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(i);
+            ret.put("ok", true);
+        } catch (ActivityNotFoundException ex) {
+            ret.put("ok", false);
+            ret.put("message", "Keine Kalender-App gefunden.");
+        }
         call.resolve(ret);
     }
 

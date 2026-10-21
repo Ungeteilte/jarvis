@@ -48,8 +48,10 @@ test('Notizen anlegen, abfragen, löschen („Merk dir“ ist seit v0.8 Gedächt
   handleSkill('schreib mir Brot auf', c);
   assert.match(handleSkill('Meine Notizen', c), /3 Notizen.*Matte.*Milch kaufen.*Brot/);
   assert.equal(handleSkill('Merke dir, dass ich Tee mag', c), null, 'Merk dir → Gedächtnis, nicht Notiz');
-  assert.match(handleSkill('Lösche alle Notizen', c), /Erledigt/);
-  assert.match(handleSkill('Meine Notizen', c), /keine Notizen/);
+  // v0.9: „Lösche alle Notizen“ geht an das Werkzeug clear_notes (Karte), nicht mehr still an den Skill
+  assert.equal(handleSkill('Lösche alle Notizen', c), null);
+  assert.match(handleSkill('Meine Notizen', c), /3 Notizen/);
+  assert.match(handleSkill('Rückgängig', c), /nichts rückgängig/);
 });
 
 test('Unbekanntes geht an die KI (null)', () => {

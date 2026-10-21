@@ -101,6 +101,11 @@ FAKE = r"""
       { label: 'Instagram', package: 'com.instagram.android' }, { label: 'Samsung Notes', package: 'com.samsung.android.app.notes' },
       { label: 'Google Notizen', package: 'com.google.android.keep' }, { label: 'Kamera', package: 'com.sec.android.app.camera' }] }); },
     launchPackage: (a) => { (window.__nat.launched = window.__nat.launched || []).push(a.package); return lat({ ok: true }); },
+    // v0.9 W5: Medientasten, Lautstärke in Prozent, Gerätestatus, Kalender-Entwurf
+    mediaKey: (a) => { (window.__nat.media = window.__nat.media || []).push(a.action); return lat({ ok: true }); },
+    setVolumePercent: (a) => { (window.__nat.volume = window.__nat.volume || []).push(a.percent); return lat({ ok: true, percent: a.percent }); },
+    getDeviceStatus: () => lat({ ok: true, status: { wlan: 'verbunden', mobil: 'nicht verbunden', bluetooth: 'unbekannt', nichtStoeren: 'aus', akku: 64, laedt: 'nein' } }),
+    calendarDraft: (a) => { (window.__nat.drafts = window.__nat.drafts || []).push(a); return lat({ ok: true }); },
     // v0.9 W2: Fake-SAF (System-Dialoge) und Teilen
     saveDocument: (a) => { (window.__nat.saved = window.__nat.saved || []).push(a); return lat({ ok: true, name: a.name }); },
     openTextDocument: () => { window.__nat.calls.push('openTextDocument'); return lat(CFG.pickFile || { ok: false, cancelled: true }); },
@@ -366,6 +371,30 @@ with sync_playwright() as pw:
     nask("Lösche die Erinnerung an den Ofen")
     check("Erinnerung: Löschen ruft cancel mit derselben ID", page.evaluate("window.__nat.cancelled || []") == [sch[0]["id"]] if sch else False)
     check("Erinnerung: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 9) v0.9 W5: Medien, Lautstärke %, Gerätestatus, Kalender-Entwurf, Notizen löschen
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5)
+    page.wait_for_timeout(400)
+    nask("Pause"); nask("nächstes Lied")
+    check("Medien: mediaKey pause → naechster", page.evaluate("window.__nat.media || []") == ["pause", "naechster"])
+    r = nask("Lautstärke auf 30 Prozent")
+    check("Lautstärke: setVolumePercent(30) + Ansage", page.evaluate("window.__nat.volume || []") == [30] and "30 Prozent" in r)
+    r = nask("Bin ich im WLAN?")
+    check("Gerätestatus: alle Felder, „unbekannt“ statt Fehler", "WLAN: verbunden" in r and "Bluetooth: unbekannt" in r and "Akku: 64 %" in r)
+    r = nask("Trag morgen um 15 Uhr Zahnarzt ein")
+    check("Kalender: Karte vor dem Entwurf", "Zahnarzt" in r and not page.evaluate("window.__nat.drafts || []"))
+    nask("ja")
+    d = page.evaluate("window.__nat.drafts || []")
+    check("Kalender: calendarDraft mit Titel und Beginn/Ende (1 h)", len(d) == 1 and d[0]["title"] == "Zahnarzt" and d[0]["end"] - d[0]["begin"] == 3600000)
+    nask("Notiere Brot kaufen"); nask("Notiere Milch holen")
+    r = nask("Lösche alle Notizen")
+    check("Notizen: „alle“ nur mit Karte", "2 Notizen" in r and page.locator(".confirm-card:not(.confirm-done)").count() >= 1)
+    nask("ja")
+    r = nask("Rückgängig")
+    check("Notizen: Rückgängig holt beide zurück", "2 Notizen sind wieder da" in r)
+    check("W5: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

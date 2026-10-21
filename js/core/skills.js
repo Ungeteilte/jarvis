@@ -2,6 +2,7 @@
 // handleSkill(text, ctx) → Antworttext oder null (= an die KI weitergeben).
 
 import { normalizeText } from './wakeword.js';
+import { undoNotes } from './notes.js';
 
 const NUMBER_WORDS = {
   null: 0, ein: 1, eine: 1, einen: 1, einer: 1, eins: 1, zwei: 2, zwo: 2, drei: 3, vier: 4, fuenf: 5,
@@ -131,9 +132,12 @@ export function handleSkill(text, ctx) {
     return `Sie haben ${notes.length === 1 ? 'eine Notiz' : notes.length + ' Notizen'}: ` +
       notes.map((n) => n.text).join('; ') + '.';
   }
-  if (/(loesch|vergiss).*notizen/.test(t)) {
-    ctx.store.set(NOTES_KEY, []);
-    return 'Erledigt. Alle Notizen sind gelöscht.';
+  // Löschen läuft seit v0.9 über die Werkzeuge delete_note / clear_notes („alle“ nur mit Karte).
+  // „Rückgängig“ holt gelöschte Notizen innerhalb von 2 Minuten zurück.
+  if (/^(?:rueckgaengig|mach (?:das|es) rueckgaengig|rueckgaengig machen|doch nicht loeschen|notiz(?:en)? wiederherstellen)$/.test(t)) {
+    const n = undoNotes(ctx.store, now);
+    if (n) return n === 1 ? 'Die Notiz ist wieder da.' : `${n} Notizen sind wieder da.`;
+    return 'Es gibt nichts rückgängig zu machen.';
   }
 
   // --- Timer ---

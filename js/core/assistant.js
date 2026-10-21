@@ -9,6 +9,8 @@ import { voiceAnswer, CONFIRM_TTL_MS } from './confirm-voice.js';
 import { pickChoice } from './app-match.js';
 import { buildExport } from './files.js';
 import { parseWhen } from './reminders.js';
+import { buildIcs } from './calendar-draft.js';
+import { undoNotes, UNDO_KEY as NOTE_UNDO_KEY, UNDO_MS as NOTE_UNDO_MS } from './notes.js';
 import { loadSettings, saveSettings, resolveProvider } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
@@ -36,7 +38,7 @@ export const FOLLOW_UP_TOOLS = new Set([
   // zeigt die zentrale Regel (risk 'schreiben') vorher eine Karte mit Herkunftshinweis
   'set_alarm', 'set_reminder',
   // v0.9: nur lesend bzw. immer mit eigener Karte
-  'list_reminders'
+  'list_reminders', 'get_device_status', 'add_calendar_event'
 ]);
 
 export function createAssistant({ store, timers, device, fetchFn, now = () => new Date(), registry, transport, stream = true, timeZone } = {}) {
@@ -128,6 +130,22 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         const r = await device.saveTextFile({ name: ex.name, mime: ex.mime, text: ex.text });
         const msg = r?.ok ? (r.message || `Gespeichert: ${ex.what} in „${r.name || ex.name}“.`) : (r?.cancelled ? 'Speichern abgebrochen.' : (r?.message || 'Speichern hat nicht geklappt.'));
         return add('assistant', msg, { source: 'tool', tool: 'export_file', error: r?.ok || r?.cancelled ? undefined : true });
+      }
+      case 'calendarDraft': {
+        // Android: Kalender-App mit Entwurf (du speicherst dort); Browser: .ics-Datei
+        const ev = { title: String(action.title || ''), begin: new Date(action.begin), end: new Date(action.end), location: String(action.location || '') };
+        if (device?.calendarDraft) {
+          const r = await device.calendarDraft({ title: ev.title, begin: ev.begin.getTime(), end: ev.end.getTime(), location: ev.location });
+          return add('assistant', r?.ok ? 'Die Kalender-App ist offen – bitte tippen Sie dort auf „Speichern“.' : (r?.message || 'Die Kalender-App ließ sich nicht öffnen.'),
+            { source: 'tool', tool: 'add_calendar_event', error: r?.ok ? undefined : true });
+        }
+        if (device?.saveTextFile) {
+          const name = `termin-${ev.begin.getFullYear()}-${String(ev.begin.getMonth() + 1).padStart(2, '0')}-${String(ev.begin.getDate()).padStart(2, '0')}.ics`;
+          const r = await device.saveTextFile({ name, mime: 'text/calendar', text: buildIcs({ ...ev, now: now() }) });
+          return add('assistant', r?.ok ? `Kalenderdatei „${name}“ gespeichert – öffnen Sie sie, um den Termin in Ihren Kalender zu übernehmen.` : (r?.message || 'Speichern hat nicht geklappt.'),
+            { source: 'tool', tool: 'add_calendar_event', error: r?.ok ? undefined : true });
+        }
+        return add('assistant', 'Termine eintragen geht hier leider nicht.', { source: 'system', unsupported: true });
       }
       case 'launchApp': {
         // App aus der Karte starten – nativ nur Pakete aus der Launcher-Liste (LaunchPolicy)
@@ -317,6 +335,16 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       const ecmd = eveningCommand(input, ecfg, (next) => saveSettings(store, { evening: normalizeEveningConfig(next) }));
       if (ecmd) return add('assistant', ecmd, { source: 'skill', settingsChanged: true });
       if (isEveningRequest(input)) return brief({ onDelta, signal, auto: false, replyTo: userMsg.id, kind: 'evening' });
+
+      // 0c-) „Rückgängig“ gilt für das zuletzt Geschehene: gelöschte Notiz(en) (v0.9) oder neuer Gedächtnis-Eintrag
+      if (/^(?:bitte\s+)?(?:r(?:ü|ue)ckg(?:ä|ae)ngig|mach (?:das|es) r(?:ü|ue)ckg(?:ä|ae)ngig)[.!]?$/i.test(input)) {
+        const u = store.get(NOTE_UNDO_KEY, null);
+        const t = now().getTime();
+        if (u && t - u.at <= NOTE_UNDO_MS && !(lastAdded && lastAdded.at > u.at)) {
+          const n = undoNotes(store, now());
+          if (n) return add('assistant', n === 1 ? 'Die Notiz ist wieder da.' : `${n} Notizen sind wieder da.`, { source: 'skill' });
+        }
+      }
 
       // 0c) Gedächtnis und Vorlieben („Merk dir …“, „Vergiss, dass …“, „Was weißt du über mich?“, „Antworte kürzer“)
       const mc = handleMemoryCommand(input, { store, now: now(), lastAdded });

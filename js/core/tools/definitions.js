@@ -5,6 +5,7 @@ import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 import { MEMORY_TOOLS } from './defs/memory-tools.js';
 import { FILE_TOOLS } from './defs/file-tools.js';
 import { REMINDER_TOOLS } from './defs/reminder-tools.js';
+import { DEVICE_TOOLS } from './defs/device-tools.js';
 import { checkWebUrl, websiteConfirm } from '../url-check.js';
 import { cleanText } from '../briefing/sanitize.js';
 import { matchApps } from '../app-match.js';
@@ -475,15 +476,27 @@ const BASE_TOOLS = [
   {
     name: 'adjust_volume',
     risk: 'lokal',
-    description: 'Lautstärke erhöhen, verringern oder stummschalten.',
-    userHint: 'Lautstärke („Lauter“ / „Leiser“ / „Stumm“)',
-    parameters: obj({ direction: str('up, down oder mute') }, ['direction']),
+    description: 'Medien-Lautstärke erhöhen, verringern, stummschalten oder auf einen Prozentwert setzen (prozent 0–100).',
+    userHint: 'Lautstärke („Lauter“ / „Leiser“ / „Stumm“ / „Lautstärke auf 30 Prozent“)',
+    parameters: obj({ direction: str('up, down oder mute'), prozent: { type: 'number', description: '0 bis 100 (optional, statt direction)' } }),
     localTriggers: [
-      { re: /^(?:lauter|lautstaerke\s+hoch|volume\s+up)[.!?]?$/i, parse: () => ({ direction: 'up' }) },
-      { re: /^(?:leiser|lautstaerke\s+runter|volume\s+down)[.!?]?$/i, parse: () => ({ direction: 'down' }) },
-      { re: /^(?:stumm|ton\s+aus|mute)[.!?]?$/i, parse: () => ({ direction: 'mute' }) }
+      { re: /^(?:lauter|lautstaerke\s+hoch|lautstärke\s+hoch|volume\s+up)[.!?]?$/i, parse: () => ({ direction: 'up' }) },
+      { re: /^(?:leiser|lautstaerke\s+runter|lautstärke\s+runter|volume\s+down)[.!?]?$/i, parse: () => ({ direction: 'down' }) },
+      { re: /^(?:stumm|ton\s+aus|mute)[.!?]?$/i, parse: () => ({ direction: 'mute' }) },
+      // v0.9: „Lautstärke auf 30 %“, „Stell die Lautstärke auf 50 Prozent“, „Lauter auf 80 Prozent“
+      { re: /^(?:stell(?:e)?\s+)?(?:die\s+)?(?:lautst(?:ae|ä)rke|lauter|leiser|volume)\s+(?:bitte\s+)?(?:auf\s+)?(\d{1,3})\s*(?:%|prozent)(?:\s+(?:stellen|setzen))?[.!?]?$/i,
+        parse: (m) => ({ prozent: Number(m[1]) }) }
     ],
-    async execute({ direction }, ctx) {
+    async execute({ direction, prozent }, ctx) {
+      if (prozent != null && prozent !== '') {
+        const p = Number(prozent);
+        if (!Number.isFinite(p) || p < 0 || p > 100) return { ok: false, message: 'Bitte einen Wert zwischen 0 und 100 Prozent nennen.' };
+        if (!ctx.device?.setVolumePercent) {
+          return { ok: false, unsupported: true, message: 'Lautstärke steuern kann ich in der Web-App nicht – das braucht die Android-App.' };
+        }
+        const r = await ctx.device.setVolumePercent(Math.round(p));
+        return r?.ok ? { ok: true, message: `Medien-Lautstärke auf ${r.percent ?? Math.round(p)} Prozent.` } : { ok: false, message: r?.message || 'Das hat nicht geklappt.' };
+      }
       if (!ctx.device?.adjustVolume) {
         return { ok: false, unsupported: true, message: 'Lautstärke steuern kann ich in der Web-App nicht – das braucht die Android-App.' };
       }
@@ -649,4 +662,4 @@ async function openAppByName(name, ctx) {
 }
 
 // Neue v0.9-Werkzeuge zuerst: ihre Sprachbefehle („Teile meine Notizen als Datei“) gehen vor allgemeinere (share_text)
-export const TOOL_DEFINITIONS = [...FILE_TOOLS, ...REMINDER_TOOLS, ...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];
+export const TOOL_DEFINITIONS = [...FILE_TOOLS, ...REMINDER_TOOLS, ...DEVICE_TOOLS, ...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];
