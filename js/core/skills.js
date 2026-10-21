@@ -123,7 +123,9 @@ export function handleSkill(text, ctx) {
     ctx.store.set(NOTES_KEY, notes);
     return `Sehr wohl, ich habe mir notiert: ${note}.`;
   }
-  if (/(was|welche).*(hab|habe|hast).*(ich|du).*notiert|meine notizen|zeig.*notizen|welche notizen/.test(t)) {
+  // „Teile/Speichere meine Notizen als Datei“ und Löschen gehören zu den Werkzeugen (v0.9), nicht zum Vorlesen
+  if (/(was|welche).*(hab|habe|hast).*(ich|du).*notiert|meine notizen|zeig.*notizen|welche notizen/.test(t)
+    && !/datei|teil|speicher|export|sicher|schick|loesch|vergiss|entfern/.test(t)) {
     const notes = loadNotes(ctx.store);
     if (!notes.length) return 'Es gibt keine Notizen.';
     return `Sie haben ${notes.length === 1 ? 'eine Notiz' : notes.length + ' Notizen'}: ` +

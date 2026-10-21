@@ -7,6 +7,7 @@ import { handleMemoryCommand } from './memory-commands.js';
 import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
 import { voiceAnswer, CONFIRM_TTL_MS } from './confirm-voice.js';
 import { pickChoice } from './app-match.js';
+import { buildExport } from './files.js';
 import { loadSettings, saveSettings, resolveProvider } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
@@ -112,6 +113,15 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         if (r && r.ok === false && !r.needsTime && !r.unsupported) meta.error = true;
         return add('assistant', r?.message || (r?.ok ? 'Erledigt.' : 'Das hat leider nicht geklappt.'), meta);
       }
+      case 'exportFile': {
+        // Nach „Ja“: Inhalt frisch bauen, dann System-Dialog „Speichern unter“ (Browser: Download)
+        if (!device?.saveTextFile) return add('assistant', 'Dateien speichern geht hier leider nicht.', { source: 'system', unsupported: true });
+        const ex = buildExport(store, action.was, action.format, { now: now(), history });
+        if (!ex.ok) return add('assistant', ex.message, { source: 'tool', tool: 'export_file' });
+        const r = await device.saveTextFile({ name: ex.name, mime: ex.mime, text: ex.text });
+        const msg = r?.ok ? (r.message || `Gespeichert: ${ex.what} in „${r.name || ex.name}“.`) : (r?.cancelled ? 'Speichern abgebrochen.' : (r?.message || 'Speichern hat nicht geklappt.'));
+        return add('assistant', msg, { source: 'tool', tool: 'export_file', error: r?.ok || r?.cancelled ? undefined : true });
+      }
       case 'launchApp': {
         // App aus der Karte starten – nativ nur Pakete aus der Launcher-Liste (LaunchPolicy)
         if (!device?.launchApp) return add('assistant', 'Apps öffnen geht nur in der Android-App.', { source: 'system', unsupported: true });
@@ -131,6 +141,7 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     const persona = loadPersona(store);
     return {
       store, timers, device, registry: tools, fetchFn, timeZone,
+      getHistory: () => [...history], // für export_file/share_file („Chat als Datei“)
       now: now(), name: persona.name, interactive: true,
       // turn.external wird true, sobald ein Werkzeug fremde Daten liefert (registry.run); sources = Herkunft für Karten
       turn: (() => { const ext = recentExternal(); return { external: ext, sources: new Set(ext ? ['vorherigen Antworten (Nachrichten, Wetter, Termine)'] : []) }; })()

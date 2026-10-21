@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Nur der Update-Ordner im App-Cache wird freigegeben (Fallback-Installer). -->
+<!-- Nur zwei Ordner im App-Cache werden freigegeben:
+     updates/ (Fallback-Installer) und share/ (v0.9: Datei teilen; wird nach 10 Minuten geleert). -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="updates" path="updates/" />
+    <cache-path name="share" path="share/" />
 </paths>

@@ -101,6 +101,10 @@ FAKE = r"""
       { label: 'Instagram', package: 'com.instagram.android' }, { label: 'Samsung Notes', package: 'com.samsung.android.app.notes' },
       { label: 'Google Notizen', package: 'com.google.android.keep' }, { label: 'Kamera', package: 'com.sec.android.app.camera' }] }); },
     launchPackage: (a) => { (window.__nat.launched = window.__nat.launched || []).push(a.package); return lat({ ok: true }); },
+    // v0.9 W2: Fake-SAF (System-Dialoge) und Teilen
+    saveDocument: (a) => { (window.__nat.saved = window.__nat.saved || []).push(a); return lat({ ok: true, name: a.name }); },
+    openTextDocument: () => { window.__nat.calls.push('openTextDocument'); return lat(CFG.pickFile || { ok: false, cancelled: true }); },
+    shareTextFile: (a) => { (window.__nat.shared = window.__nat.shared || []).push(a); return lat({ ok: true }); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
@@ -312,6 +316,25 @@ with sync_playwright() as pw:
     check("Apps: zu kurzer Name → kein Start, klare Antwort", "Welche App" in r and page.evaluate("window.__nat.launched.length") == 2)
     check("Apps: Launcher-Liste nur einmal pro Sitzung geladen", page.evaluate("window.__nat.calls.filter((c) => c === 'listLaunchableApps').length") == 1)
     check("Apps: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 7) v0.9 W2: Dateien über Fake-SAF – Export nach „Ja“, Lesen ohne Karte (der Dialog ist die Wahl), Teilen
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5, pickFile={"ok": True, "name": "liste.txt", "mime": "text/plain", "size": 12, "text": "Milch\nEier"})
+    page.wait_for_timeout(400)
+    nask("Notiere Brot kaufen")
+    r = nask("Speichere meine Notizen als Datei")
+    check("Dateien: Export-Karte, vorher kein saveDocument", "als Datei speichern" in r and not page.evaluate("window.__nat.saved || []"))
+    nask("ja")
+    saved = page.evaluate("window.__nat.saved || []")
+    check("Dateien: nach „Ja“ saveDocument mit Name/Typ/Inhalt", len(saved) == 1 and saved[0]["name"].startswith("jarvis-notizen-")
+          and saved[0]["mime"] == "text/plain" and "Brot kaufen" in saved[0]["text"])
+    r = nask("Lies mir eine Datei vor")
+    check("Dateien: openTextDocument direkt, Inhalt angezeigt", "openTextDocument" in page.evaluate("window.__nat.calls") and "Milch" in r and "liste.txt" in r)
+    nask("Teile meine Notizen als Datei")
+    sh = page.evaluate("window.__nat.shared || []")
+    check("Dateien: shareTextFile mit .txt", len(sh) == 1 and sh[0]["name"].endswith(".txt"))
+    check("Dateien: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

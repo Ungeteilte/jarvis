@@ -250,6 +250,39 @@ with sync_playwright() as p:
     page.wait_for_timeout(500)
     check("Nach Nein: Abbruchtext", "Alles klar" in page.locator(".msg.assistant").last.inner_text() or "ab" in page.locator(".msg.assistant").last.inner_text().lower())
 
+    # 4d) v0.9 W2: Dateien in der PWA – Export als Download (Blob), Einlesen über <input type=file>
+    ask("Notiere Brot kaufen", 700)
+    ask("Speichere meine Notizen als Datei", 800)
+    card = page.locator(".confirm-card:not(.confirm-done)").last
+    check("Datei-Export: Karte nennt die Anzahl", "Notiz" in card.inner_text() and "als Datei speichern" in card.inner_text())
+    dl_name, dl_text = "", ""
+    try:
+        with page.expect_download(timeout=5000) as dl:
+            card.locator(".confirm-yes").click()
+        dl_name = dl.value.suggested_filename
+        dl_text = open(dl.value.path(), encoding="utf-8").read()
+    except Exception as e:
+        print("INFO Download:", str(e).splitlines()[0])
+    check("Datei-Export: Download jarvis-notizen-….txt mit Inhalt", dl_name.startswith("jarvis-notizen-") and dl_name.endswith(".txt") and "Brot kaufen" in dl_text)
+    def pick_file(name, data, mime="text/plain"):
+        ask("Lies mir eine Datei vor", 700)
+        c = page.locator(".confirm-card:not(.confirm-done)").last
+        ok = "Textdatei auswählen" in c.inner_text()
+        try:
+            with page.expect_file_chooser(timeout=5000) as fc:
+                c.locator(".confirm-yes").click()
+            fc.value.set_files(files=[{"name": name, "mimeType": mime, "buffer": data}])
+        except Exception as e:
+            print("INFO Dateiauswahl:", str(e).splitlines()[0]); ok = False
+        page.wait_for_timeout(900)
+        return ok, page.locator(".msg.assistant").last.inner_text()
+    ok, txt = pick_file("einkauf.txt", "Milch\nEier\nÄpfel".encode("utf-8"))
+    check("Datei lesen (PWA): erst Karte, dann Auswahl, Inhalt angezeigt", ok and "einkauf.txt" in txt and "Äpfel" in txt)
+    ok, txt = pick_file("gross.txt", b"x" * (1024 * 1024))
+    check("Datei lesen (PWA): 1-MB-Datei klar abgelehnt", ok and "zu groß" in txt)
+    ok, txt = pick_file("bild.png", b"\x89PNG\r\n\x1a\n\x00\x00", "image/png")
+    check("Datei lesen (PWA): Bild klar abgelehnt", ok and "nur Textdateien" in txt)
+
     # 5) Wake-Word-Logik im Browser (Kern-Module, simuliertes Transkript)
     wk = page.evaluate("""async () => {
       const { createWakeMatcher } = await import('./js/core/wakeword.js');

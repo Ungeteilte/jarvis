@@ -3,6 +3,7 @@ import { phoneDigits, stripQuotes, after } from './triggers.js';
 import { formatDuration, parseDuration, loadNotes, parseClockTime, parseAlarmTime } from '../skills.js';
 import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 import { MEMORY_TOOLS } from './defs/memory-tools.js';
+import { FILE_TOOLS } from './defs/file-tools.js';
 import { checkWebUrl, websiteConfirm } from '../url-check.js';
 import { cleanText } from '../briefing/sanitize.js';
 import { matchApps } from '../app-match.js';
@@ -459,6 +460,7 @@ const BASE_TOOLS = [
           const n = stripQuotes(m[1]).replace(/[.!?]+$/, '').trim();
           // Keine URLs/Websites hier
           if (/\./.test(n) && !/\s/.test(n)) return null;
+          if (/\bdatei\b/i.test(n)) return null; // „Öffne eine Datei“ → read_file
           if (/^(youtube|spotify|whatsapp|maps|google maps)$/i.test(n)) return null;
           return { name: n };
         } }
@@ -645,4 +647,5 @@ async function openAppByName(name, ctx) {
   return d.launchApp(m.app.package, m.app.label);
 }
 
-export const TOOL_DEFINITIONS = [...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];
+// Neue v0.9-Werkzeuge zuerst: ihre Sprachbefehle („Teile meine Notizen als Datei“) gehen vor allgemeinere (share_text)
+export const TOOL_DEFINITIONS = [...FILE_TOOLS, ...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];

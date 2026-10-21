@@ -138,6 +138,19 @@ export function createNativeDevice() {
     },
 
     // Extra native APIs used by extended tools
+    // ---------- v0.9 W2: Dateien über das Storage Access Framework (System-Dialog) ----------
+    async saveTextFile({ name, mime, text }) {
+      const r = await jcall('saveDocument', { name, mime, text }, { ok: false, message: 'Speichern nicht verfügbar.' });
+      return r || { ok: false, message: 'Speichern nicht verfügbar.' };
+    },
+    async pickTextFile() {
+      const r = await jcall('openTextDocument', {}, { ok: false, message: 'Datei-Auswahl nicht verfügbar.' });
+      return r || { ok: false, message: 'Datei-Auswahl nicht verfügbar.' };
+    },
+    async shareTextFile({ name, mime, text }) {
+      const r = await jcall('shareTextFile', { name, mime, text }, { ok: false, message: 'Teilen nicht verfügbar.' });
+      return r || { ok: false, message: 'Teilen nicht verfügbar.' };
+    },
     /** v0.9 W1: startbare Apps (Launcher-Einträge) – pro Sitzung zwischengespeichert. */
     async listApps() {
       if (appCache) return { ok: true, apps: appCache };

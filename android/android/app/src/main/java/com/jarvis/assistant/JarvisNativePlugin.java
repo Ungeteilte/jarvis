@@ -26,12 +26,14 @@ import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 
+import androidx.activity.result.ActivityResult;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKeys;
 
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.jarvis.assistant.tools.FileLimits;
 import com.jarvis.assistant.tools.LaunchPolicy;
 import com.jarvis.assistant.updater.UpdateEngine;
 import com.jarvis.assistant.updater.UpdateEvents;
@@ -46,6 +48,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.PermissionState;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
@@ -62,6 +65,7 @@ import com.jarvis.assistant.briefing.BriefingState;
 import com.jarvis.assistant.briefing.CalendarReader;
 import android.os.PowerManager;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -102,6 +106,7 @@ public class JarvisNativePlugin extends Plugin {
             securePrefs = ctx.getSharedPreferences("jarvis_secure_fallback", Context.MODE_PRIVATE);
         }
 
+        cleanupShareCache(); // v0.9 W2: übrig gebliebene Teilen-Dateien entfernen
         updateListener = st -> {
             try { notifyListeners("updateStatus", JSObject.fromJSONObject(st)); } catch (Exception ignored) {}
         };
@@ -402,6 +407,176 @@ public class JarvisNativePlugin extends Plugin {
         ret.put("level", pct / 100.0);
         ret.put("charging", charging);
         call.resolve(ret);
+    }
+
+    // ---------- v0.9 W2: Dateien (Storage Access Framework, keine Speicher-Berechtigung) ----------
+
+    /** Export: System-Dialog „Speichern unter“; du wählst Ort und Namen. */
+    @PluginMethod
+    public void saveDocument(PluginCall call) {
+        String text = call.getString("text", "");
+        if (text.length() > FileLimits.MAX_EXPORT_CHARS) {
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("message", "Das ist zu viel Text für eine Datei.");
+            call.resolve(r);
+            return;
+        }
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(FileLimits.shareMime(call.getString("mime", "")))
+            .putExtra(Intent.EXTRA_TITLE, FileLimits.safeFileName(call.getString("name", "")));
+        try {
+            startActivityForResult(call, i, "onSaveDocument");
+        } catch (ActivityNotFoundException e) {
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("message", "Auf diesem Gerät gibt es keinen Datei-Dialog.");
+            call.resolve(r);
+        }
+    }
+
+    @ActivityCallback
+    private void onSaveDocument(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        JSObject ret = new JSObject();
+        Uri uri = result.getResultCode() == Activity.RESULT_OK && result.getData() != null ? result.getData().getData() : null;
+        if (uri == null) {
+            ret.put("ok", false);
+            ret.put("cancelled", true);
+            call.resolve(ret);
+            return;
+        }
+        try (java.io.OutputStream os = getContext().getContentResolver().openOutputStream(uri, "wt")) {
+            if (os == null) throw new java.io.IOException("kein Ziel");
+            os.write(call.getString("text", "").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            ret.put("ok", true);
+            ret.put("name", displayName(uri, call.getString("name", "")));
+        } catch (Exception e) {
+            ret.put("ok", false);
+            ret.put("message", "Die Datei konnte nicht gespeichert werden.");
+        }
+        call.resolve(ret);
+    }
+
+    /** Einlesen: System-Dialog „Öffnen“; nur Text bis 256 KB, keine dauerhaften Rechte. */
+    @PluginMethod
+    public void openTextDocument(PluginCall call) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, FileLimits.PICK_MIMES);
+        try {
+            startActivityForResult(call, i, "onOpenTextDocument");
+        } catch (ActivityNotFoundException e) {
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("message", "Auf diesem Gerät gibt es keinen Datei-Dialog.");
+            call.resolve(r);
+        }
+    }
+
+    @ActivityCallback
+    private void onOpenTextDocument(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        JSObject ret = new JSObject();
+        Uri uri = result.getResultCode() == Activity.RESULT_OK && result.getData() != null ? result.getData().getData() : null;
+        if (uri == null) {
+            ret.put("ok", false);
+            ret.put("cancelled", true);
+            call.resolve(ret);
+            return;
+        }
+        android.content.ContentResolver cr = getContext().getContentResolver();
+        String name = displayName(uri, "datei");
+        long size = -1;
+        try (android.database.Cursor c = cr.query(uri, new String[] { android.provider.OpenableColumns.SIZE }, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) size = c.getLong(0);
+        } catch (Exception ignored) {}
+        String mime = cr.getType(uri);
+        String err = FileLimits.checkMeta(name, mime, size);
+        if (err == null) {
+            try (java.io.InputStream in = cr.openInputStream(uri)) {
+                if (in == null) throw new java.io.IOException("leer");
+                byte[] buf = new byte[FileLimits.MAX_BYTES + 1];
+                int len = 0;
+                int n;
+                while (len < buf.length && (n = in.read(buf, len, buf.length - len)) > 0) len += n;
+                if (len > FileLimits.MAX_BYTES) err = "Die Datei ist zu groß. Ich lese höchstens 256 KB.";
+                else if (FileLimits.looksBinary(buf, len)) err = "Das sieht nicht nach einer Textdatei aus – ich lese sie nicht.";
+                else {
+                    ret.put("ok", true);
+                    ret.put("name", name);
+                    ret.put("mime", mime == null ? "" : mime);
+                    ret.put("size", len);
+                    ret.put("text", new String(buf, 0, len, java.nio.charset.StandardCharsets.UTF_8));
+                }
+            } catch (Exception e) {
+                err = "Die Datei konnte nicht gelesen werden.";
+            }
+        }
+        if (err != null) {
+            ret.put("ok", false);
+            ret.put("message", err);
+        }
+        call.resolve(ret);
+    }
+
+    /** Teilen: Datei kurz in cache/share/, Teilen-Menü über den FileProvider; nach 10 Minuten gelöscht. */
+    @PluginMethod
+    public void shareTextFile(PluginCall call) {
+        JSObject ret = new JSObject();
+        String text = call.getString("text", "");
+        String mime = FileLimits.shareMime(call.getString("mime", ""));
+        String name = FileLimits.safeFileName(call.getString("name", ""));
+        if (text.length() > FileLimits.MAX_EXPORT_CHARS) {
+            ret.put("ok", false);
+            ret.put("message", "Das ist zu viel Text für eine Datei.");
+            call.resolve(ret);
+            return;
+        }
+        try {
+            cleanupShareCache();
+            File dir = new File(getContext().getCacheDir(), "share");
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("kein Ordner");
+            File f = new File(dir, name);
+            try (java.io.FileOutputStream os = new java.io.FileOutputStream(f)) {
+                os.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            Uri uri = androidx.core.content.FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+            Intent send = new Intent(Intent.ACTION_SEND)
+                .setType(mime)
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            send.setClipData(ClipData.newRawUri(name, uri));
+            Intent chooser = Intent.createChooser(send, "Datei teilen");
+            chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if (getActivity() != null) getActivity().startActivity(chooser);
+            else getContext().startActivity(chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            mainHandler.postDelayed(this::cleanupShareCache, FileLimits.CACHE_MAX_AGE_MS + 5000);
+            ret.put("ok", true);
+        } catch (Exception e) {
+            ret.put("ok", false);
+            ret.put("message", "Teilen hat nicht geklappt.");
+        }
+        call.resolve(ret);
+    }
+
+    /** Löscht geteilte Dateien, die älter als 10 Minuten sind (auch beim App-Start). */
+    private void cleanupShareCache() {
+        try {
+            File dir = new File(getContext().getCacheDir(), "share");
+            for (File f : FileLimits.expired(dir.listFiles(), System.currentTimeMillis())) {
+                if (!f.delete()) Log.w("JarvisFiles", "Konnte alte Teilen-Datei nicht löschen");
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private String displayName(Uri uri, String fallback) {
+        try (android.database.Cursor c = getContext().getContentResolver().query(uri, new String[] { android.provider.OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) return c.getString(0);
+        } catch (Exception ignored) {}
+        return fallback;
     }
 
     /** Startbare Apps (Launcher-Einträge) als {label, package}; Jarvis selbst nicht. */
