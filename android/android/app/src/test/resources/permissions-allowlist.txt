@@ -1,0 +1,27 @@
+# Erlaubte Berechtigungen der Jarvis-APK (uses-permission, nach dem Zusammenführen aller Manifeste).
+# JUnit (PermissionAllowlistTest) und tools/release-android.sh (aapt dump permissions) prüfen auf
+# GENAU diese Liste: jede neue Berechtigung muss hier bewusst eingetragen und begründet werden.
+# Bewusst NICHT erlaubt: QUERY_ALL_PACKAGES, MANAGE_EXTERNAL_STORAGE, SEND_SMS, CALL_PHONE, READ_CONTACTS,
+# BIND_NOTIFICATION_LISTENER_SERVICE (Benachrichtigungen lesen kommt frühestens in v0.9.1).
+android.permission.INTERNET
+android.permission.RECORD_AUDIO
+android.permission.CAMERA
+android.permission.FLASHLIGHT
+android.permission.VIBRATE
+android.permission.ACCESS_COARSE_LOCATION
+android.permission.ACCESS_FINE_LOCATION
+android.permission.MODIFY_AUDIO_SETTINGS
+com.android.alarm.permission.SET_ALARM
+android.permission.POST_NOTIFICATIONS
+android.permission.FOREGROUND_SERVICE
+android.permission.FOREGROUND_SERVICE_SPECIAL_USE
+android.permission.RECEIVE_BOOT_COMPLETED
+android.permission.READ_CALENDAR
+android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+android.permission.REQUEST_INSTALL_PACKAGES
+android.permission.ACCESS_NETWORK_STATE
+# v0.9 W4: genaue Erinnerungen (vom Nutzer in den Systemeinstellungen freizugeben; sonst ungefähre Zeit)
+android.permission.SCHEDULE_EXACT_ALARM
+# aus Bibliotheken (WorkManager/Benachrichtigungen bzw. androidx.core)
+android.permission.WAKE_LOCK
+com.jarvis.assistant.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION

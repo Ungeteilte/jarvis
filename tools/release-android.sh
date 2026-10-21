@@ -111,6 +111,16 @@ echo "$APK_LINEAGE" | grep -q "Signer #2 in lineage certificate SHA-256 digest: 
 # Wecker: Uhr-Apps verlangen com.android.alarm.permission.SET_ALARM (v0.8 hatte den falschen Namen → SecurityException)
 "$AAPT" dump permissions "$WORK/Jarvis.apk" | grep -q "name='com.android.alarm.permission.SET_ALARM'" \
   || { echo "APK ohne com.android.alarm.permission.SET_ALARM – Wecker würde abgelehnt" >&2; exit 1; }
+# v0.9: Berechtigungen der fertigen APK müssen GENAU der Liste entsprechen (wie PermissionAllowlistTest)
+ALLOW="$REPO_DIR/android/android/app/src/test/resources/permissions-allowlist.txt"
+APK_PERMS="$("$AAPT" dump permissions "$WORK/Jarvis.apk" | sed -nE "s/^uses-permission(-sdk-23)?: name='([^']+)'.*/\2/p" | sort -u)"
+WANT_PERMS="$(grep -vE '^\s*(#|$)' "$ALLOW" | sed -E 's/\s+$//' | sort -u)"
+if [ "$APK_PERMS" != "$WANT_PERMS" ]; then
+  echo "Berechtigungen der APK weichen von permissions-allowlist.txt ab:" >&2
+  diff <(echo "$WANT_PERMS") <(echo "$APK_PERMS") >&2 || true
+  exit 1
+fi
+echo "Berechtigungen: $(echo "$APK_PERMS" | wc -l) – entsprechen der Liste"
 BADGE="$("$AAPT" dump badging "$WORK/Jarvis.apk" | awk 'NR==1')"
 echo "$BADGE" | grep -q "name='com.jarvis.assistant' versionCode='$NEW_CODE' versionName='$NAME'" || { echo "Badging passt nicht: $BADGE" >&2; exit 1; }
 SHA=$(sha256sum "$WORK/Jarvis.apk" | awk '{print $1}')
