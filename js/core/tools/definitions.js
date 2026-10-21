@@ -5,6 +5,7 @@ import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 import { MEMORY_TOOLS } from './defs/memory-tools.js';
 import { checkWebUrl, websiteConfirm } from '../url-check.js';
 import { cleanText } from '../briefing/sanitize.js';
+import { matchApps } from '../app-match.js';
 
 const str = (d) => ({ type: 'string', description: d });
 const obj = (props, required = []) => ({ type: 'object', properties: props, required });
@@ -448,7 +449,8 @@ const BASE_TOOLS = [
     risk: 'aussen',
     confirms: 'self',
     describe: ({ name }) => ({ title: `App „${String(name || '').slice(0, 40)}“ öffnen?`, detail: 'App starten' }),
-    description: 'Öffnet eine installierte App anhand ihres Namens (z. B. Instagram, Einstellungen).',
+    // v0.9 W1: Abgleich im Kern (app-match.js) gegen die Launcher-Liste, Start nur per Paketname
+    description: 'Öffnet eine installierte App anhand ihres Namens (z. B. Instagram, Einstellungen). Startet nur Apps, ändert nichts an ihnen.',
     userHint: 'App öffnen („Öffne Instagram“)',
     parameters: obj({ name: str('Anzeigename der App') }, ['name']),
     localTriggers: [
@@ -462,10 +464,7 @@ const BASE_TOOLS = [
         } }
     ],
     async execute({ name }, ctx) {
-      if (!ctx.device?.openApp) {
-        return { ok: false, unsupported: true, message: 'Apps öffnen geht zuverlässig erst in der Android-App. Bitte Jarvis aus dem Store/APK nutzen.' };
-      }
-      return ctx.device.openApp(String(name || '').trim());
+      return openAppByName(String(name || ''), ctx);
     }
   },
 
@@ -608,4 +607,42 @@ const BASE_TOOLS = [
 ];
 
 // Morgen-Briefing: Wetter, Nachrichten, Kalender (js/core/tools/defs/briefing-tools.js)
+/** App-Karte „Meinten Sie …?“ (eine App) bzw. Auswahlkarte (mehrere). */
+function appCard(apps, { title, intro }) {
+  const action = (a) => ({ type: 'launchApp', package: a.package, label: a.label });
+  if (apps.length === 1) {
+    const a = apps[0];
+    return { ok: true, needsConfirm: true, message: `${intro || `Meinten Sie ${a.label}?`} Tippen Sie auf Ja oder sagen Sie „Ja“.`,
+      confirm: { title: title || `Meinten Sie ${a.label}?`, detail: `${a.label} (${a.package}) öffnen`, action: action(a) } };
+  }
+  const names = apps.map((a, i) => `${i + 1}. ${a.label}`).join(', ');
+  return { ok: true, needsConfirm: true, message: `Welche App meinen Sie: ${names}? Sagen Sie zum Beispiel „die erste“.`,
+    confirm: { title: title || 'Welche App meinen Sie?', detail: apps.map((a) => `${a.label} (${a.package})`).join('\n'),
+      choices: apps.map((a) => ({ label: a.label, detail: a.package, action: action(a) })) } };
+}
+
+/**
+ * open_app (v0.9 W1): Launcher-Liste holen, Namen abgleichen, nur ein konkretes Paket starten.
+ * Eindeutig + exakt → sofort (außer ctx.mustConfirm nach fremden Daten), sonst Karte.
+ */
+async function openAppByName(name, ctx) {
+  const d = ctx.device;
+  if (!d?.listApps || !d?.launchApp) {
+    return { ok: false, unsupported: true, message: 'Apps öffnen kann ein Browser nicht – das geht nur in der Android-App von Jarvis.' };
+  }
+  const m0 = matchApps(name, []);
+  if (m0.kind === 'invalid') return { ok: false, message: 'Welche App soll ich öffnen? Sagen Sie zum Beispiel „Öffne Kamera“.' };
+  const list = await d.listApps();
+  if (!list?.ok) return { ok: false, message: list?.message || 'Ich konnte die App-Liste nicht lesen.' };
+  const m = matchApps(name, list.apps);
+  const shown = String(name).trim().slice(0, 40);
+  if (m.kind === 'none') {
+    return { ok: false, notFound: true, message: `Ich finde keine App namens „${shown}“.${m.similar?.length ? ` Ähnlich: ${m.similar.join(', ')}.` : ''}` };
+  }
+  if (m.kind === 'ambiguous') return appCard(m.candidates, {});
+  if (m.kind === 'fuzzy') return appCard([m.app], {});
+  if (ctx.mustConfirm) return appCard([m.app], { title: `${m.app.label} öffnen?`, intro: `Soll ich ${m.app.label} öffnen?` });
+  return d.launchApp(m.app.package, m.app.label);
+}
+
 export const TOOL_DEFINITIONS = [...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];

@@ -10,7 +10,9 @@
 // confirms (wie bestätigt ein Werkzeug selbst?):
 //   'always' – führt nie selbst aus, liefert immer eine Ja-Karte (Anruf, SMS, URL …)
 //   'system' – der System-Dialog ist die Bestätigung (Teilen-Menü, Datei-Dialog, Einstellungs-Panel)
-//   'self'   – entscheidet selbst (z. B. open_app: eindeutiger Name sofort, sonst Karte)
+//   'self'   – entscheidet selbst (z. B. open_app: eindeutiger Name sofort, sonst Karte). Unter Taint
+//              läuft es mit ctx.mustConfirm=true und MUSS dann eine eigene Karte liefern (mit Details wie
+//              dem Paketnamen, die die zentrale Karte nicht kennt); registry.run prüft das.
 //
 // Regel (registry.run):
 //   - Aufruf durch dich (lokaler Befehl) oder durch die KI ohne fremde Daten: lesen/lokal/schreiben sofort;
@@ -66,6 +68,7 @@ export function gate(tool, args, ctx = {}) {
   if (risk === 'schreiben' && !tainted) return null;
   if (risk === 'aussen' && !tainted && tool.confirms) return null;
   if (tainted && tool.confirms === 'always') return null; // eigene Karte, Hinweis kommt in registry.run dazu
+  if (tainted && tool.confirms === 'self') return { selfConfirm: true };
   const { title, detail } = describeCall(tool, args);
   const hint = tainted ? originHint(ctx.turn) : '';
   return {

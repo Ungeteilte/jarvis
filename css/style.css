@@ -149,6 +149,8 @@ output { color: var(--text); }
 .confirm-detail { font-size: 0.9rem; color: var(--muted); word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
 .confirm-actions { display: flex; gap: 8px; margin-top: 4px; }
 .confirm-actions .btn { flex: 1; min-height: 44px; }
+.choice-actions { flex-direction: column; }
+.choice-actions .btn { min-height: 48px; text-align: left; }
 .confirm-card.confirm-done { opacity: 0.55; }
 .confirm-card.confirm-done .btn { pointer-events: none; }
 

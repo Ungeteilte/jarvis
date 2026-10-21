@@ -1,0 +1,326 @@
+[
+{
+"label": "Einstellungen",
+"package": "com.android.settings"
+},
+{
+"label": "Kamera",
+"package": "com.sec.android.app.camera"
+},
+{
+"label": "Galerie",
+"package": "com.sec.android.gallery3d"
+},
+{
+"label": "Rechner",
+"package": "com.sec.android.app.popupcalculator"
+},
+{
+"label": "Uhr",
+"package": "com.sec.android.app.clockpackage"
+},
+{
+"label": "Samsung Notes",
+"package": "com.samsung.android.app.notes"
+},
+{
+"label": "Eigene Dateien",
+"package": "com.sec.android.app.myfiles"
+},
+{
+"label": "Telefon",
+"package": "com.samsung.android.dialer"
+},
+{
+"label": "Nachrichten",
+"package": "com.samsung.android.messaging"
+},
+{
+"label": "Kontakte",
+"package": "com.samsung.android.app.contacts"
+},
+{
+"label": "Kalender",
+"package": "com.samsung.android.calendar"
+},
+{
+"label": "Play Store",
+"package": "com.android.vending"
+},
+{
+"label": "Internet",
+"package": "com.sec.android.app.sbrowser"
+},
+{
+"label": "Chrome",
+"package": "com.android.chrome"
+},
+{
+"label": "Google",
+"package": "com.google.android.googlequicksearchbox"
+},
+{
+"label": "Gmail",
+"package": "com.google.android.gm"
+},
+{
+"label": "Maps",
+"package": "com.google.android.apps.maps"
+},
+{
+"label": "YouTube",
+"package": "com.google.android.youtube"
+},
+{
+"label": "YouTube Music",
+"package": "com.google.android.apps.youtube.music"
+},
+{
+"label": "Drive",
+"package": "com.google.android.apps.docs"
+},
+{
+"label": "Fotos",
+"package": "com.google.android.apps.photos"
+},
+{
+"label": "Google Notizen",
+"package": "com.google.android.keep"
+},
+{
+"label": "Meet",
+"package": "com.google.android.apps.tachyon"
+},
+{
+"label": "Google Home",
+"package": "com.google.android.apps.chromecast.app"
+},
+{
+"label": "Google Kalender",
+"package": "com.google.android.calendar"
+},
+{
+"label": "Wallet",
+"package": "com.google.android.apps.walletnfcrel"
+},
+{
+"label": "Gemini",
+"package": "com.google.android.apps.bard"
+},
+{
+"label": "Galaxy Store",
+"package": "com.sec.android.app.samsungapps"
+},
+{
+"label": "Samsung Health",
+"package": "com.sec.android.app.shealth"
+},
+{
+"label": "Galaxy Wearable",
+"package": "com.samsung.android.app.watchmanager"
+},
+{
+"label": "SmartThings",
+"package": "com.samsung.android.oneconnect"
+},
+{
+"label": "Samsung Wallet",
+"package": "com.samsung.android.spay"
+},
+{
+"label": "Samsung TV Plus",
+"package": "com.samsung.android.tvplus"
+},
+{
+"label": "Samsung Members",
+"package": "com.samsung.android.voc"
+},
+{
+"label": "Samsung Free",
+"package": "com.samsung.android.app.spage"
+},
+{
+"label": "Bixby",
+"package": "com.samsung.android.bixby.agent"
+},
+{
+"label": "Game Launcher",
+"package": "com.samsung.android.game.gamehome"
+},
+{
+"label": "Sprachrekorder",
+"package": "com.sec.android.app.voicenote"
+},
+{
+"label": "Radio",
+"package": "com.sec.android.app.fm"
+},
+{
+"label": "Tipps",
+"package": "com.samsung.android.app.tips"
+},
+{
+"label": "Smart Switch",
+"package": "com.sec.android.easyMover"
+},
+{
+"label": "Gerätewartung",
+"package": "com.samsung.android.lool"
+},
+{
+"label": "AR-Zone",
+"package": "com.samsung.android.arzone"
+},
+{
+"label": "Global Goals",
+"package": "com.samsung.sree"
+},
+{
+"label": "Microsoft 365 (Office)",
+"package": "com.microsoft.office.officehubrow"
+},
+{
+"label": "OneDrive",
+"package": "com.microsoft.skydrive"
+},
+{
+"label": "Outlook",
+"package": "com.microsoft.office.outlook"
+},
+{
+"label": "Netflix",
+"package": "com.netflix.mediaclient"
+},
+{
+"label": "Spotify",
+"package": "com.spotify.music"
+},
+{
+"label": "WhatsApp",
+"package": "com.whatsapp"
+},
+{
+"label": "Instagram",
+"package": "com.instagram.android"
+},
+{
+"label": "Facebook",
+"package": "com.facebook.katana"
+},
+{
+"label": "Messenger",
+"package": "com.facebook.orca"
+},
+{
+"label": "Threads",
+"package": "com.instagram.barcelona"
+},
+{
+"label": "TikTok",
+"package": "com.zhiliaoapp.musically"
+},
+{
+"label": "Telegram",
+"package": "org.telegram.messenger"
+},
+{
+"label": "Signal",
+"package": "org.thoughtcrime.securesms"
+},
+{
+"label": "Snapchat",
+"package": "com.snapchat.android"
+},
+{
+"label": "X",
+"package": "com.twitter.android"
+},
+{
+"label": "Twitch",
+"package": "tv.twitch.android.app"
+},
+{
+"label": "Discord",
+"package": "com.discord"
+},
+{
+"label": "Amazon Shopping",
+"package": "com.amazon.mShop.android.shopping"
+},
+{
+"label": "Prime Video",
+"package": "com.amazon.avod.thirdpartyclient"
+},
+{
+"label": "eBay",
+"package": "com.ebay.mobile"
+},
+{
+"label": "Kleinanzeigen",
+"package": "com.ebay.kleinanzeigen"
+},
+{
+"label": "PayPal",
+"package": "com.paypal.android.p2pmobile"
+},
+{
+"label": "DB Navigator",
+"package": "de.hafas.android.db"
+},
+{
+"label": "Lieferando",
+"package": "com.yopeso.lieferando"
+},
+{
+"label": "Tagesschau",
+"package": "de.tagesschau"
+},
+{
+"label": "WetterOnline",
+"package": "de.wetteronline.wetterapp"
+},
+{
+"label": "Komoot",
+"package": "de.komoot.android"
+},
+{
+"label": "Strava",
+"package": "com.strava"
+},
+{
+"label": "Duolingo",
+"package": "com.duolingo"
+},
+{
+"label": "Zoom",
+"package": "us.zoom.videomeetings"
+},
+{
+"label": "Teams",
+"package": "com.microsoft.teams"
+},
+{
+"label": "Sparkasse",
+"package": "com.starfinanz.smob.android.sfinanzstatus"
+},
+{
+"label": "ING",
+"package": "de.ingdiba.bankingapp"
+},
+{
+"label": "Audible",
+"package": "com.audible.application"
+},
+{
+"label": "Notizen Pro",
+"package": "com.example.notizenpro"
+},
+{
+"label": "Shazam",
+"package": "com.shazam.android"
+},
+{
+"label": "Jarvis Nachbar",
+"package": "com.other.jarvis"
+}
+]

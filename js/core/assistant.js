@@ -6,6 +6,7 @@ import { buildSystemPrompt } from './prompt.js';
 import { handleMemoryCommand } from './memory-commands.js';
 import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
 import { voiceAnswer, CONFIRM_TTL_MS } from './confirm-voice.js';
+import { pickChoice } from './app-match.js';
 import { loadSettings, saveSettings, resolveProvider } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
@@ -56,6 +57,8 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     persist();
     emitEvent(makeMsgEvent(msg));
     if (role === 'assistant' && meta.confirm?.action) pending = { action: meta.confirm.action, msgId: msg.id, at: now().getTime() };
+    // Auswahlkarte (v0.9: mehrere passende Apps) – gesprochen „die erste“ oder der Name
+    else if (role === 'assistant' && Array.isArray(meta.confirm?.choices)) pending = { choices: meta.confirm.choices, msgId: msg.id, at: now().getTime() };
     return msg;
   }
 
@@ -108,6 +111,12 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         if (r?.unsupported) meta.unsupported = true;
         if (r && r.ok === false && !r.needsTime && !r.unsupported) meta.error = true;
         return add('assistant', r?.message || (r?.ok ? 'Erledigt.' : 'Das hat leider nicht geklappt.'), meta);
+      }
+      case 'launchApp': {
+        // App aus der Karte starten – nativ nur Pakete aus der Launcher-Liste (LaunchPolicy)
+        if (!device?.launchApp) return add('assistant', 'Apps öffnen geht nur in der Android-App.', { source: 'system', unsupported: true });
+        const r = await device.launchApp(String(action.package || ''), String(action.label || ''));
+        return add('assistant', r?.message || (r?.ok ? 'Erledigt.' : 'Das hat leider nicht geklappt.'), { source: 'tool', tool: 'open_app', error: r?.ok ? undefined : true });
       }
       case 'setAlarm': { // Karten aus v0.8 (vor der zentralen Regel) bleiben bedienbar
         const r = await tools.run('set_alarm', { time: `${action.hour}:${String(action.minute).padStart(2, '0')}`, label: action.label }, ctx());
@@ -222,7 +231,15 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         const fresh = now().getTime() - p.at <= CONFIRM_TTL_MS;
         const ans = fresh ? voiceAnswer(input) : null;
         pending = null;
-        if (ans === 'yes') {
+        if (p.choices) {
+          const i = fresh ? pickChoice(input, p.choices) : -1;
+          if (i >= 0) {
+            const r = await runAction(p.choices[i].action);
+            r.confirmResolved = p.msgId;
+            return r;
+          }
+          if (ans === 'no') return add('assistant', 'Alles klar, ich breche ab.', { source: 'system', confirmResolved: p.msgId });
+        } else if (ans === 'yes') {
           const r = await runAction(p.action);
           r.confirmResolved = p.msgId;
           return r;

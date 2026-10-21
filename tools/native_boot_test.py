@@ -96,6 +96,11 @@ FAKE = r"""
     sttCancel: () => { st.cancels++; st.active = null; return lat({}); },
     openUrl: ({ url }) => { window.__nat.opened.push(url); return lat({}); },
     setAlarm: (a) => { (window.__nat.alarms = window.__nat.alarms || []).push(a); return CFG.alarmFail ? lat(null).then(() => { throw new Error('Keine Uhr-App gefunden, die Wecker annimmt.'); }) : lat(CFG.alarmOpened ? { ok: true, opened: true, hour: a.hour, minute: a.minute } : { ok: true, opened: false }); },
+    // v0.9 W1: Launcher-Liste + Start per Paketname
+    listLaunchableApps: () => { window.__nat.calls.push('listLaunchableApps'); return lat({ ok: true, apps: [
+      { label: 'Instagram', package: 'com.instagram.android' }, { label: 'Samsung Notes', package: 'com.samsung.android.app.notes' },
+      { label: 'Google Notizen', package: 'com.google.android.keep' }, { label: 'Kamera', package: 'com.sec.android.app.camera' }] }); },
+    launchPackage: (a) => { (window.__nat.launched = window.__nat.launched || []).push(a.package); return lat({ ok: true }); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
@@ -285,6 +290,28 @@ with sync_playwright() as pw:
     check("Wecker-Ersatzweg: Uhr-App mit 4 Uhr geöffnet, ehrlicher Hinweis auf „Speichern“",
           page.evaluate("window.__nat.alarms") == [{"hour": 4, "minute": 0, "message": "Jarvis Wecker"}]
           and "bitte tippen Sie dort auf „Speichern“" in r and "gestellt." not in r)
+    errors.extend(errs)
+    b.close()
+
+    # 6) v0.9 W1: Apps starten – eindeutig sofort, mehrdeutig per Auswahlkarte, nur Paketnamen an Java
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5)
+    page.wait_for_timeout(400)
+    r = nask("Öffne Instagram")
+    check("Apps: „Öffne Instagram“ → launchPackage(com.instagram.android) ohne Karte",
+          page.evaluate("window.__nat.launched") == ["com.instagram.android"] and "Ich öffne Instagram" in r)
+    r = nask("Öffne Notes")
+    card = page.locator(".choice-card:not(.confirm-done)").last
+    btns = card.locator(".confirm-choice")
+    check("Apps: „Öffne Notes“ → Auswahlkarte mit 2 Apps + Paketnamen, noch kein Start",
+          btns.count() == 2 and "com.google.android.keep" in card.inner_text() and page.evaluate("window.__nat.launched.length") == 1)
+    safe(btns.nth(1).click, timeout=3000)
+    page.wait_for_timeout(600)
+    check("Apps: Tipp auf „2. Google Notizen“ startet genau dieses Paket",
+          page.evaluate("window.__nat.launched") == ["com.instagram.android", "com.google.android.keep"])
+    r = nask("Öffne a")
+    check("Apps: zu kurzer Name → kein Start, klare Antwort", "Welche App" in r and page.evaluate("window.__nat.launched.length") == 2)
+    check("Apps: Launcher-Liste nur einmal pro Sitzung geladen", page.evaluate("window.__nat.calls.filter((c) => c === 'listLaunchableApps').length") == 1)
+    check("Apps: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

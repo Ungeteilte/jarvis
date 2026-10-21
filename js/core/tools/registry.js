@@ -42,9 +42,15 @@ export function createToolRegistry(tools = []) {
       if (!t) return { ok: false, message: `Unbekanntes Werkzeug: ${name}.` };
       try {
         // Zentrale Regel (v0.9 W0): Risikoklasse + Taint entscheiden, ob eine Karte nötig ist.
-        const blocked = gate(t, args || {}, ctx || {});
-        if (blocked) return blocked;
-        const r = await t.execute(args || {}, ctx);
+        const g = gate(t, args || {}, ctx || {});
+        if (g && !g.selfConfirm) return g;
+        // confirms='self' unter Taint: Werkzeug baut seine eigene Karte (z. B. mit Paketname)
+        const runCtx = g?.selfConfirm ? { ...ctx, mustConfirm: true } : ctx;
+        const r = await t.execute(args || {}, runCtx);
+        if (g?.selfConfirm && r?.ok !== false && !r?.needsConfirm) {
+          // Vertrag gebrochen: Werkzeug hat trotz mustConfirm ohne Karte gehandelt – laut melden (Test fängt das)
+          return { ok: false, blocked: true, message: `Werkzeug „${name}“ hat ohne Bestätigung gehandelt.` };
+        }
         // Fremde Daten gelesen → Taint für den Rest der Runde, mit Herkunft für den Kartenhinweis
         if (t.externalData && ctx?.turn) {
           ctx.turn.external = true;

@@ -225,25 +225,41 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
     view.addMessage(reply);
     if (reply.confirmResolved) { openCards.get(reply.confirmResolved)?.closeCard?.(); openCards.delete(reply.confirmResolved); }
     if (reply.memoryChanged && !$('#view-settings').classList.contains('hidden')) settingsView.refreshMemory();
-    if (reply.confirm) {
-      const cardId = reply.id;
-      openCards.set(cardId, view.addConfirmCard(reply.confirm, {
-        onYes: async () => {
-          openCards.delete(cardId);
-          const r = await assistant.confirmAction(reply.confirm.action);
-          if (r) { view.addMessage(r); await say(r.text); }
-        },
-        onNo: async () => {
-          const r = assistant.cancelAction();
-          if (r) { view.addMessage(r); await say(r.text); }
-        }
-      }));
-    }
+    if (reply.confirm) attachCard(reply);
     view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
     await say(reply.text);
   }
   if (myTurn === turn && !busy) { wake.resume('turn', { delayMs: WAKE_RESUME_AFTER_TTS_MS }); idle(); }
   return reply;
+}
+
+/**
+ * Ja/Nein- bzw. Auswahlkarte zu einer Antwort anzeigen. Das Ergebnis eines „Ja“ kann selbst wieder
+ * eine Karte tragen (z. B. App-Auswahl nach der zentralen Karte) – dann folgt die nächste Karte.
+ */
+function attachCard(reply) {
+  const cardId = reply.id;
+  const after = async (r) => {
+    if (!r) return;
+    view.addMessage(r);
+    if (r.confirm) attachCard(r);
+    await say(r.text);
+  };
+  openCards.set(cardId, view.addConfirmCard(reply.confirm, {
+    onYes: async () => {
+      openCards.delete(cardId);
+      await after(await assistant.confirmAction(reply.confirm.action));
+    },
+    onChoose: async (i) => {
+      openCards.delete(cardId);
+      const c = reply.confirm.choices?.[i];
+      if (c) await after(await assistant.confirmAction(c.action));
+    },
+    onNo: async () => {
+      openCards.delete(cardId);
+      await after(assistant.cancelAction());
+    }
+  }));
 }
 
 // ---------- Morgen-Briefing ----------

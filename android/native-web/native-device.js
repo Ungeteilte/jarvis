@@ -14,6 +14,7 @@ const jcall = (fn, args, fallback = null) => {
 };
 
 export function createNativeDevice() {
+  let appCache = null; // Launcher-Liste (v0.9 W1), gilt für diese Sitzung
   return {
     canOpenUrl: () => true,
 
@@ -137,10 +138,25 @@ export function createNativeDevice() {
     },
 
     // Extra native APIs used by extended tools
-    async openApp(name) {
+    /** v0.9 W1: startbare Apps (Launcher-Einträge) – pro Sitzung zwischengespeichert. */
+    async listApps() {
+      if (appCache) return { ok: true, apps: appCache };
       try {
-        const r = await J().openApp({ name });
-        return r?.ok ? { ok: true, message: r.message } : { ok: false, message: r?.message || 'App nicht gefunden.' };
+        const r = await J().listLaunchableApps();
+        if (!r?.ok) return { ok: false, message: r?.message || 'App-Liste nicht lesbar.' };
+        appCache = Array.isArray(r.apps) ? r.apps : [];
+        return { ok: true, apps: appCache };
+      } catch (e) {
+        return { ok: false, message: e.message };
+      }
+    },
+    /** Startet genau dieses Paket (nativ nur, wenn es in der Launcher-Liste steht). */
+    async launchApp(pkg, label) {
+      try {
+        const r = await J().launchPackage({ package: pkg });
+        if (r?.ok) return { ok: true, message: `Ich öffne ${label || 'die App'}.` };
+        appCache = null; // evtl. deinstalliert → beim nächsten Mal neu laden
+        return { ok: false, message: r?.message || 'Diese App kann ich nicht starten.' };
       } catch (e) {
         return { ok: false, message: e.message };
       }

@@ -7,7 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.ApplicationInfo;
+import android.content.pm.ResolveInfo;
 import android.content.pm.PackageManager;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
@@ -32,6 +32,7 @@ import androidx.security.crypto.MasterKeys;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.jarvis.assistant.tools.LaunchPolicy;
 import com.jarvis.assistant.updater.UpdateEngine;
 import com.jarvis.assistant.updater.UpdateEvents;
 import com.jarvis.assistant.updater.UpdateInstaller;
@@ -403,36 +404,69 @@ public class JarvisNativePlugin extends Plugin {
         call.resolve(ret);
     }
 
-    @PluginMethod
-    public void openApp(PluginCall call) {
-        String name = call.getString("name", "").trim().toLowerCase(Locale.GERMAN);
-        JSObject ret = new JSObject();
+    /** Startbare Apps (Launcher-Einträge) als {label, package}; Jarvis selbst nicht. */
+    private List<JSObject> launchableApps() {
         PackageManager pm = getContext().getPackageManager();
-        List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
-        String bestPkg = null;
-        String bestLabel = null;
-        for (ApplicationInfo ai : apps) {
-            String label = pm.getApplicationLabel(ai).toString().toLowerCase(Locale.GERMAN);
-            if (label.equals(name) || label.contains(name) || name.contains(label)) {
-                Intent launch = pm.getLaunchIntentForPackage(ai.packageName);
-                if (launch != null) {
-                    bestPkg = ai.packageName;
-                    bestLabel = pm.getApplicationLabel(ai).toString();
-                    if (label.equals(name)) break;
-                }
-            }
+        Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> infos = pm.queryIntentActivities(main, 0);
+        List<JSObject> out = new ArrayList<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        String own = getContext().getPackageName();
+        for (ResolveInfo ri : infos) {
+            if (ri.activityInfo == null) continue;
+            String pkg = ri.activityInfo.packageName;
+            if (pkg == null || pkg.equals(own) || !seen.add(pkg)) continue;
+            JSObject o = new JSObject();
+            o.put("label", String.valueOf(ri.loadLabel(pm)));
+            o.put("package", pkg);
+            out.add(o);
         }
-        if (bestPkg == null) {
+        return out;
+    }
+
+    /**
+     * v0.9 W1: Liste der startbaren Apps. Der Abgleich mit dem gesprochenen Namen passiert im JS-Kern
+     * (js/core/app-match.js). Braucht kein QUERY_ALL_PACKAGES – die <queries>-Regel MAIN/LAUNCHER reicht.
+     */
+    @PluginMethod
+    public void listLaunchableApps(PluginCall call) {
+        JSObject ret = new JSObject();
+        JSArray arr = new JSArray();
+        for (JSObject o : launchableApps()) arr.put(o);
+        ret.put("ok", true);
+        ret.put("apps", arr);
+        call.resolve(ret);
+    }
+
+    /** v0.9 W1: startet genau ein Paket – nur, wenn es jetzt in der Launcher-Liste steht (LaunchPolicy). */
+    @PluginMethod
+    public void launchPackage(PluginCall call) {
+        String pkg = call.getString("package", "");
+        JSObject ret = new JSObject();
+        List<String> allowed = new ArrayList<>();
+        for (JSObject o : launchableApps()) allowed.add(o.getString("package"));
+        String err = LaunchPolicy.check(pkg, allowed, getContext().getPackageName());
+        if (err != null) {
             ret.put("ok", false);
-            ret.put("message", "Ich habe keine App namens „" + call.getString("name", "") + "“ gefunden.");
+            ret.put("message", err);
             call.resolve(ret);
             return;
         }
-        Intent launch = pm.getLaunchIntentForPackage(bestPkg);
+        Intent launch = getContext().getPackageManager().getLaunchIntentForPackage(pkg);
+        if (launch == null) {
+            ret.put("ok", false);
+            ret.put("message", "Diese App lässt sich nicht starten.");
+            call.resolve(ret);
+            return;
+        }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        getContext().startActivity(launch);
-        ret.put("ok", true);
-        ret.put("message", "Öffne " + bestLabel + ".");
+        try {
+            getContext().startActivity(launch);
+            ret.put("ok", true);
+        } catch (ActivityNotFoundException | SecurityException e) {
+            ret.put("ok", false);
+            ret.put("message", "Die App hat den Start abgelehnt.");
+        }
         call.resolve(ret);
     }
 

@@ -152,8 +152,11 @@ export function fillVoiceSelect(select, voices, selectedId) {
 }
 
 
-/** Bestätigungskarte (Ja/Nein) im Chat. onYes/onNo werden einmal aufgerufen. */
-export function addConfirmCard({ title, detail }, { onYes, onNo }) {
+/**
+ * Bestätigungskarte (Ja/Nein) im Chat. onYes/onNo werden einmal aufgerufen.
+ * Mit choices (v0.9, z. B. mehrere passende Apps): ein Knopf je Auswahl + „Abbrechen“; onChoose(index).
+ */
+export function addConfirmCard({ title, detail, choices }, { onYes, onNo, onChoose }) {
   const chat = els().chat;
   const div = document.createElement('div');
   div.className = 'msg assistant confirm-card';
@@ -181,15 +184,37 @@ export function addConfirmCard({ title, detail }, { onYes, onNo }) {
   no.type = 'button';
   no.className = 'btn confirm-no';
   no.textContent = 'Nein';
+  const buttons = [yes, no];
   const done = (fn) => {
-    yes.disabled = no.disabled = true;
+    for (const b of buttons) b.disabled = true;
     div.classList.add('confirm-done');
     fn?.();
   };
-  div.closeCard = () => done(null); // per Sprache („Ja“/„Nein“) erledigt
-  yes.addEventListener('click', () => done(onYes));
-  no.addEventListener('click', () => done(onNo));
-  row.append(yes, no);
+  div.closeCard = () => done(null); // per Sprache („Ja“/„Nein“/„die erste“) erledigt
+  if (Array.isArray(choices) && choices.length) {
+    div.classList.add('choice-card');
+    row.classList.add('choice-actions');
+    buttons.length = 0;
+    choices.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn primary confirm-choice';
+      b.dataset.index = String(i);
+      b.textContent = `${i + 1}. ${c.label}`;
+      if (c.detail) b.title = c.detail;
+      b.addEventListener('click', () => done(() => onChoose?.(i)));
+      buttons.push(b);
+      row.append(b);
+    });
+    no.textContent = 'Abbrechen';
+    buttons.push(no);
+    no.addEventListener('click', () => done(onNo));
+    row.append(no);
+  } else {
+    yes.addEventListener('click', () => done(onYes));
+    no.addEventListener('click', () => done(onNo));
+    row.append(yes, no);
+  }
   body.append(row);
   div.append(who, body);
   chat.append(div);
