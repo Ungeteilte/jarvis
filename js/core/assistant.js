@@ -8,6 +8,7 @@ import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
 import { voiceAnswer, CONFIRM_TTL_MS } from './confirm-voice.js';
 import { pickChoice } from './app-match.js';
 import { buildExport } from './files.js';
+import { parseWhen } from './reminders.js';
 import { loadSettings, saveSettings, resolveProvider } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
@@ -33,7 +34,9 @@ export const FOLLOW_UP_TOOLS = new Set([
   'get_weather', 'get_news', 'get_calendar_events',
   // Wecker/Erinnerung: kommt der Aufruf von der KI, während fremde Texte im Kontext stehen,
   // zeigt die zentrale Regel (risk 'schreiben') vorher eine Karte mit Herkunftshinweis
-  'set_alarm'
+  'set_alarm', 'set_reminder',
+  // v0.9: nur lesend bzw. immer mit eigener Karte
+  'list_reminders'
 ]);
 
 export function createAssistant({ store, timers, device, fetchFn, now = () => new Date(), registry, transport, stream = true, timeZone } = {}) {
@@ -48,8 +51,12 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
   let lastAdded = null;
   // „Stell mir einen Wecker“ ohne Uhrzeit → Jarvis fragt nach; die nächste Antwort („7 Uhr“) stellt ihn
   let pendingAlarm = null;
+  // „Erinnere mich an die Milch“ ohne Zeit → Jarvis fragt „Wann …?“; die nächste Antwort („morgen um 9“) plant sie
+  let pendingReminder = null;
   const askedForAlarmTime = (results) => {
     if ((results || []).some((t) => t.name === 'set_alarm' && t.result?.needsTime)) pendingAlarm = { at: now().getTime() };
+    const rem = (results || []).find((t) => t.name === 'set_reminder' && t.result?.needsTime && t.result.reminderText);
+    if (rem) pendingReminder = { text: rem.result.reminderText, at: now().getTime() };
   };
 
   function add(role, text, meta = {}) {
@@ -280,6 +287,24 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
           const r = await tools.run('set_alarm', { time: input }, c);
           if (r.needsTime) pendingAlarm = { at: now().getTime() };
           return add('assistant', r.message, { source: 'tool', tool: 'set_alarm', error: r.ok === false && !r.unsupported && !r.needsTime ? true : undefined, unsupported: r.unsupported || undefined });
+        }
+      }
+
+      // Antwort auf „Wann soll ich Sie an … erinnern?“ (2 Minuten gültig)
+      if (pendingReminder) {
+        const p = pendingReminder;
+        pendingReminder = null;
+        if (now().getTime() - p.at <= CONFIRM_TTL_MS) {
+          if (voiceAnswer(input) === 'no' || /^(?:doch nicht|keine erinnerung|vergiss es)\b/i.test(input)) {
+            return add('assistant', 'Alles klar, keine Erinnerung.', { source: 'system' });
+          }
+          if (input.length <= 60 && parseWhen(input, now())) {
+            const r = await tools.run('set_reminder', { text: p.text, zeit: input }, c);
+            askedForAlarmTime([{ name: 'set_reminder', result: r }]);
+            const meta = { source: 'tool', tool: 'set_reminder' };
+            if (r.needsConfirm && r.confirm) meta.confirm = r.confirm;
+            return add('assistant', r.message, meta);
+          }
         }
       }
 

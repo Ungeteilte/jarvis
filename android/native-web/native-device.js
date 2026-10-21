@@ -4,6 +4,8 @@ const J = () => Cap()?.Plugins?.JarvisNative;
 const Geo = () => Cap()?.Plugins?.Geolocation;
 const Share = () => Cap()?.Plugins?.Share;
 const Haptics = () => Cap()?.Plugins?.Haptics;
+const LN = () => Cap()?.Plugins?.LocalNotifications;
+let reminderChannel = false;
 /** Plugin-Methode sicher aufrufen (fehlt sie oder schlägt sie fehl → fallback). */
 const jcall = (fn, args, fallback = null) => {
   try {
@@ -138,6 +140,46 @@ export function createNativeDevice() {
     },
 
     // Extra native APIs used by extended tools
+    // ---------- v0.9 W4: Erinnerungen über @capacitor/local-notifications (Kanal reminder_v1) ----------
+    // Das Plugin plant nach einem Neustart selbst neu (LocalNotificationRestoreReceiver) und weicht ohne
+    // „Wecker & Erinnerungen“-Freigabe auf ungenaue Alarme aus – das sagen wir ehrlich (exact:false).
+    reminders: {
+      async schedule({ id, text, at }) {
+        const ln = LN();
+        if (!ln) return { ok: false, message: 'Erinnerungen sind auf diesem Gerät nicht verfügbar.' };
+        try {
+          let perm = await ln.checkPermissions();
+          if (perm?.display !== 'granted') perm = await ln.requestPermissions();
+          if (perm?.display !== 'granted') {
+            return { ok: false, denied: true, message: 'Benachrichtigungen sind für Jarvis ausgeschaltet – so kann ich Sie nicht erinnern. Bitte in den Android-Einstellungen erlauben.' };
+          }
+          if (!reminderChannel) {
+            await ln.createChannel({ id: 'reminder_v1', name: 'Erinnerungen', description: 'Erinnerungen, die Sie bei Jarvis gestellt haben', importance: 4, visibility: 1, vibration: true });
+            reminderChannel = true;
+          }
+          await ln.schedule({ notifications: [{ id, title: 'Erinnerung', body: text, channelId: 'reminder_v1', schedule: { at: new Date(at), allowWhileIdle: true }, extra: { jarvisReminder: id } }] });
+          const ex = await this.exactStatus();
+          return { ok: true, exact: ex.exact !== 'denied' };
+        } catch (e) {
+          return { ok: false, message: 'Die Erinnerung konnte nicht geplant werden.' };
+        }
+      },
+      async cancel(id) {
+        try { await LN()?.cancel({ notifications: [{ id }] }); return { ok: true }; } catch { return { ok: false }; }
+      },
+      /** 'granted' | 'denied' | 'unknown' (vor Android 12 immer erlaubt). */
+      async exactStatus() {
+        try {
+          const r = await LN()?.checkExactNotificationSetting?.();
+          return { exact: r?.exact_alarm === 'denied' ? 'denied' : r?.exact_alarm === 'granted' ? 'granted' : 'unknown' };
+        } catch { return { exact: 'unknown' }; }
+      },
+      /** Öffnet „Wecker & Erinnerungen“ für Jarvis (Android 12+). */
+      async openExactSettings() {
+        try { const r = await LN()?.changeExactNotificationSetting?.(); return { ok: true, exact: r?.exact_alarm || 'unknown' }; } catch (e) { return { ok: false, message: e.message }; }
+      }
+    },
+
     // ---------- v0.9 W2: Dateien über das Storage Access Framework (System-Dialog) ----------
     async saveTextFile({ name, mime, text }) {
       const r = await jcall('saveDocument', { name, mime, text }, { ok: false, message: 'Speichern nicht verfügbar.' });

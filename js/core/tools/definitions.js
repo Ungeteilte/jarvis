@@ -4,6 +4,7 @@ import { formatDuration, parseDuration, loadNotes, parseClockTime, parseAlarmTim
 import { BRIEFING_TOOLS } from './defs/briefing-tools.js';
 import { MEMORY_TOOLS } from './defs/memory-tools.js';
 import { FILE_TOOLS } from './defs/file-tools.js';
+import { REMINDER_TOOLS } from './defs/reminder-tools.js';
 import { checkWebUrl, websiteConfirm } from '../url-check.js';
 import { cleanText } from '../briefing/sanitize.js';
 import { matchApps } from '../app-match.js';
@@ -648,4 +649,4 @@ async function openAppByName(name, ctx) {
 }
 
 // Neue v0.9-Werkzeuge zuerst: ihre Sprachbefehle („Teile meine Notizen als Datei“) gehen vor allgemeinere (share_text)
-export const TOOL_DEFINITIONS = [...FILE_TOOLS, ...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];
+export const TOOL_DEFINITIONS = [...FILE_TOOLS, ...REMINDER_TOOLS, ...BASE_TOOLS, ...MEMORY_TOOLS, ...BRIEFING_TOOLS];

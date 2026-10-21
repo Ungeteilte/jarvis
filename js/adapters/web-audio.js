@@ -18,5 +18,7 @@ export function beep({ freq = 880, duration = 0.15, times = 1, gap = 0.12 } = {}
   } catch { /* Audio nicht verfügbar */ }
 }
 export function vibrate(pattern) {
+  // Chrome blockiert (mit Konsolen-Warnung) Vibration vor dem ersten Tipp – z. B. verpasste Erinnerung beim Öffnen
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
   try { navigator.vibrate?.(pattern); } catch { /* egal */ }
 }

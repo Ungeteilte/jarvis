@@ -113,7 +113,18 @@ FAKE = r"""
   const J = new Proxy(base, { get: (t, k) => (k in t ? t[k] : rec(String(k), {})) });
   window.Capacitor = {
     isNativePlatform: () => true, getPlatform: () => 'android',
-    Plugins: { JarvisNative: J, SpeechRecognition: { requestPermissions: () => lat({ speechRecognition: 'granted' }) }, Preferences: { keys: () => lat({ keys: [] }), get: () => lat({ value: null }), set: () => lat({}), remove: () => lat({}) } }
+    Plugins: { JarvisNative: J,
+      // v0.9 W4: Fake-LocalNotifications (Erlaubnis, Kanal, planen, löschen, genaue Alarme)
+      LocalNotifications: {
+        checkPermissions: () => lat({ display: 'prompt' }),
+        requestPermissions: () => lat({ display: 'granted' }),
+        createChannel: (c) => { (window.__nat.channels = window.__nat.channels || []).push(c); return lat({}); },
+        schedule: (o) => { (window.__nat.scheduled = window.__nat.scheduled || []).push(...o.notifications); return lat({ notifications: o.notifications.map((n) => ({ id: n.id })) }); },
+        cancel: (o) => { (window.__nat.cancelled = window.__nat.cancelled || []).push(...o.notifications.map((n) => n.id)); return lat({}); },
+        checkExactNotificationSetting: () => lat({ exact_alarm: CFG.exact || 'denied' }),
+        changeExactNotificationSetting: () => { window.__nat.calls.push('changeExact'); return lat({ exact_alarm: 'granted' }); }
+      },
+      SpeechRecognition: { requestPermissions: () => lat({ speechRecognition: 'granted' }) }, Preferences: { keys: () => lat({ keys: [] }), get: () => lat({ value: null }), set: () => lat({}), remove: () => lat({}) } }
   };
   // Android-WebView hat kein speechSynthesis – Aufrufe hier wären der Fehler (Web-Adapter)
   try {
@@ -335,6 +346,26 @@ with sync_playwright() as pw:
     sh = page.evaluate("window.__nat.shared || []")
     check("Dateien: shareTextFile mit .txt", len(sh) == 1 and sh[0]["name"].endswith(".txt"))
     check("Dateien: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 8) v0.9 W4: Erinnerungen über Fake-LocalNotifications (Kanal reminder_v1, ehrlicher Hinweis ohne Freigabe)
+    b, page, logs, errs, started = run(pw, bridge_ms=25, file_ms=5)
+    page.wait_for_timeout(400)
+    r = nask("Erinnere mich in 2 Stunden an den Ofen")
+    check("Erinnerung: Vorlesen + „richtig?“, noch nichts geplant", "richtig?" in r and not page.evaluate("window.__nat.scheduled || []"))
+    t0 = page.evaluate("Date.now()")
+    r = nask("ja")
+    sch = page.evaluate("window.__nat.scheduled || []")
+    ch = page.evaluate("window.__nat.channels || []")
+    ok_time = bool(sch) and abs(page.evaluate("(s) => Date.parse(s)", sch[0]["schedule"]["at"]) - (t0 + 2 * 3600000)) < 120000
+    check("Erinnerung: schedule mit Kanal reminder_v1, Text, Zeit ≈ in 2 h, allowWhileIdle",
+          len(sch) == 1 and sch[0]["channelId"] == "reminder_v1" and sch[0]["body"] == "Ofen" and ok_time and sch[0]["schedule"]["allowWhileIdle"] is True
+          and any(c["id"] == "reminder_v1" for c in ch))
+    check("Erinnerung: ohne Freigabe genauer Alarme ehrlicher Hinweis", "Erinnerung gestellt" in r and "nicht freigegeben" in r)
+    nask("Lösche die Erinnerung an den Ofen")
+    check("Erinnerung: Löschen ruft cancel mit derselben ID", page.evaluate("window.__nat.cancelled || []") == [sch[0]["id"]] if sch else False)
+    check("Erinnerung: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

@@ -85,6 +85,9 @@
     <!-- Selbst-Update über GitHub Releases -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- v0.9 W4: genaue Erinnerungen (Android 14+: standardmäßig aus, du schaltest „Wecker und Erinnerungen“ frei;
+         ohne Freigabe plant das Notification-Plugin ungenau, Jarvis sagt das) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />

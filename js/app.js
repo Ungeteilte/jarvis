@@ -8,6 +8,7 @@ import { createTimerManager } from './core/timers.js';
 import { createAssistant } from './core/assistant.js';
 import { createWakeController } from './core/wake-controller.js';
 import { formatDuration, loadNotes } from './core/skills.js';
+import { dueReminders, markDone, formatWhen } from './core/reminders.js';
 import { createSentenceChunker } from './core/sentences.js';
 import { createWebStorageAdapter } from './adapters/web-storage.js';
 import { createWebTTS } from './adapters/web-tts.js';
@@ -260,6 +261,23 @@ function attachCard(reply) {
       await after(assistant.cancelAction());
     }
   }));
+}
+
+/** Fällige Erinnerungen melden (Browser) bzw. still abhaken (Android hat sie schon gezeigt). */
+function checkReminders() {
+  const due = dueReminders(store, new Date());
+  if (!due.length) return;
+  markDone(store, due.map((r) => r.id));
+  if (device.reminders) return;
+  for (const r of due) {
+    const late = Date.now() - Date.parse(r.at) > 2 * 60000;
+    beep({ freq: 880, times: 3 });
+    vibrate([300, 150, 300]);
+    const text = late ? `Verpasste Erinnerung (${formatWhen(new Date(r.at))}): ${r.text}` : `Erinnerung: ${r.text}`;
+    const msg = assistant.add('assistant', text, { source: 'system', reminder: true });
+    view.addMessage(msg);
+    say(msg.text);
+  }
 }
 
 // ---------- Morgen-Briefing ----------
@@ -554,6 +572,11 @@ function init() {
 
   timers.restore();
   setInterval(() => view.updateTimerChip(timers.list(), formatDuration), 1000);
+  // v0.9 W4: Erinnerungen. Android meldet sie als Benachrichtigung (auch bei geschlossener App) – hier nur
+  // als erledigt markieren. Im Browser meldet Jarvis sie selbst, solange die App offen ist; verpasste beim Öffnen.
+  checkReminders();
+  setInterval(() => { if (!document.hidden) checkReminders(); }, 15000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
   view.updateTimerChip(timers.list(), formatDuration);
 
   if (settings.wakeWord) setWake(true); // Chrome fragt ggf. nach Mikrofon-Erlaubnis

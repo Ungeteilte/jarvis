@@ -283,6 +283,27 @@ with sync_playwright() as p:
     ok, txt = pick_file("bild.png", b"\x89PNG\r\n\x1a\n\x00\x00", "image/png")
     check("Datei lesen (PWA): Bild klar abgelehnt", ok and "nur Textdateien" in txt)
 
+    # 4e) v0.9 W4: Erinnerungen in der PWA – Vorlesen + Ja, nur bei offener App, Verpasste beim Öffnen
+    r = ask("Erinnere mich in 2 Stunden an den Kuchen", 700)
+    card = page.locator(".confirm-card:not(.confirm-done)").last
+    check("Erinnerung: Zeit vorgelesen, Frage „richtig?“", "richtig?" in r and "Kuchen" in card.inner_text())
+    card.locator(".confirm-yes").click(); page.wait_for_timeout(600)
+    check("Erinnerung (PWA): gestellt mit Hinweis „nur, solange Jarvis offen ist“",
+          "Erinnerung gestellt" in page.locator(".msg.assistant").last.inner_text() and "solange Jarvis offen" in page.locator(".msg.assistant").last.inner_text())
+    page.evaluate("""() => {
+      const now = Date.now();
+      localStorage.setItem('jarvis.reminders', JSON.stringify([
+        { id: 9001, text: 'Paket abholen', at: new Date(now - 10 * 60000).toISOString(), created: new Date(now - 3600000).toISOString() },
+        { id: 9002, text: 'Tee ziehen lassen', at: new Date(now + 4000).toISOString(), created: new Date(now).toISOString() }
+      ]));
+    }""")
+    page.reload(); page.wait_for_load_state("networkidle"); page.wait_for_timeout(800)
+    msgs = page.locator(".msg.assistant").all_inner_texts()
+    check("Erinnerung (PWA): verpasste beim nächsten Öffnen gemeldet", any("Verpasste Erinnerung (" in m and "Paket abholen" in m for m in msgs))
+    page.wait_for_timeout(17000)
+    msgs = page.locator(".msg.assistant").all_inner_texts()
+    check("Erinnerung (PWA): bei offener App pünktlich (±15 s) gemeldet", any(m.strip().endswith("Erinnerung: Tee ziehen lassen") for m in msgs))
+
     # 5) Wake-Word-Logik im Browser (Kern-Module, simuliertes Transkript)
     wk = page.evaluate("""async () => {
       const { createWakeMatcher } = await import('./js/core/wakeword.js');
