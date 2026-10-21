@@ -298,9 +298,9 @@ test('Lokale Auslöser: Wetter, Nachrichten, Termine', async () => {
 
 // ---------- Sammeln + Text ----------
 test('gatherFacts: parallel, hängendes Werkzeug wird nach Timeout übersprungen', async () => {
-  const slow = { name: 'get_news', execute: () => new Promise(() => {}) };
-  const fast = { name: 'get_weather', execute: async () => ({ ok: true, data: parseWeather(WEATHER) }) };
-  const bat = { name: 'get_battery', execute: async () => ({ ok: true, data: { level: 0.5, charging: true } }) };
+  const slow = { name: 'get_news', risk: 'lesen', execute: () => new Promise(() => {}) };
+  const fast = { name: 'get_weather', risk: 'lesen', execute: async () => ({ ok: true, data: parseWeather(WEATHER) }) };
+  const bat = { name: 'get_battery', risk: 'lesen', execute: async () => ({ ok: true, data: { level: 0.5, charging: true } }) };
   const reg = createToolRegistry([slow, fast, bat]);
   const store = createStore(createMemoryAdapter());
   store.set('notes', [{ text: 'Milch kaufen', at: '' }]);

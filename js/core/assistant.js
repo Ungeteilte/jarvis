@@ -24,12 +24,13 @@ const MAX_HISTORY = 200;
 const FOLLOW_UP_MS = 30 * 60000;
 // Nach einem Briefing (fremde Schlagzeilen/Termintitel im Kontext) nur Werkzeuge, die lesen
 // oder ohnehin per Ja-Karte bestätigt werden – kein stilles Handeln durch eingeschleuste Texte.
+// Zusätzlich gilt seit v0.9 überall die zentrale Regel aus tools/risk.js (Taint → Karte).
 export const FOLLOW_UP_TOOLS = new Set([
   'call_phone', 'send_sms', 'send_whatsapp', 'send_email', 'navigate', 'open_youtube', 'open_spotify',
   'open_website', 'search_web', 'get_location', 'get_battery', 'list_notes', 'list_memory', 'list_capabilities',
   'get_weather', 'get_news', 'get_calendar_events',
-  // Wecker: wird im Hintergrund gestellt (SKIP_UI) – kommt der Aufruf von der KI, während fremde Texte
-  // im Kontext stehen, zeigt set_alarm vorher eine Ja/Nein-Karte (ctx.viaAI + ctx.turn.external)
+  // Wecker/Erinnerung: kommt der Aufruf von der KI, während fremde Texte im Kontext stehen,
+  // zeigt die zentrale Regel (risk 'schreiben') vorher eine Karte mit Herkunftshinweis
   'set_alarm'
 ]);
 
@@ -97,7 +98,18 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         lastAdded = null;
         return add('assistant', `Erledigt. ${n === 1 ? 'Ein Eintrag ist' : n + ' Einträge sind'} gelöscht. Notizen bleiben erhalten.`, { source: 'skill', memoryChanged: true });
       }
-      case 'setAlarm': {
+      case 'runTool': {
+        // Zentrale Karte (v0.9 W0): genau den bestätigten Aufruf ausführen – confirmed überspringt die Regel einmalig
+        const tool = tools.get(action.name);
+        if (!tool) return add('assistant', 'Dieses Werkzeug gibt es nicht mehr.', { source: 'system' });
+        const r = await tools.run(action.name, action.args || {}, { ...ctx(), confirmed: true });
+        const meta = { source: 'tool', tool: action.name };
+        if (r?.needsConfirm && r.confirm) meta.confirm = r.confirm;
+        if (r?.unsupported) meta.unsupported = true;
+        if (r && r.ok === false && !r.needsTime && !r.unsupported) meta.error = true;
+        return add('assistant', r?.message || (r?.ok ? 'Erledigt.' : 'Das hat leider nicht geklappt.'), meta);
+      }
+      case 'setAlarm': { // Karten aus v0.8 (vor der zentralen Regel) bleiben bedienbar
         const r = await tools.run('set_alarm', { time: `${action.hour}:${String(action.minute).padStart(2, '0')}`, label: action.label }, ctx());
         return add('assistant', r.message, { source: 'tool', tool: 'set_alarm', error: r.ok === false && !r.unsupported ? true : undefined, unsupported: r.unsupported || undefined });
       }
@@ -111,7 +123,8 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     return {
       store, timers, device, registry: tools, fetchFn, timeZone,
       now: now(), name: persona.name, interactive: true,
-      turn: { external: recentExternal() } // wird true, sobald ein Werkzeug fremde Daten liefert
+      // turn.external wird true, sobald ein Werkzeug fremde Daten liefert (registry.run); sources = Herkunft für Karten
+      turn: (() => { const ext = recentExternal(); return { external: ext, sources: new Set(ext ? ['vorherigen Antworten (Nachrichten, Wetter, Termine)'] : []) }; })()
     };
   }
 

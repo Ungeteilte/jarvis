@@ -47,6 +47,8 @@ export function eventsSentence(events, { titles = true, day = 'heute', timeZone 
 export const BRIEFING_TOOLS = [
   {
     name: 'get_weather',
+    risk: 'lesen',
+    sourceLabel: 'Wetter',
     externalData: true, // fremde Texte im Ergebnis → danach kein propose_memory in dieser Runde
     description: 'Wetter für heute oder morgen am aktuellen Standort des Nutzers (Open-Meteo).',
     userHint: 'Wetter („Wie wird das Wetter?“)',
@@ -77,6 +79,8 @@ export const BRIEFING_TOOLS = [
   },
   {
     name: 'get_news',
+    risk: 'lesen',
+    sourceLabel: 'Nachrichten',
     externalData: true, // fremde Texte im Ergebnis → danach kein propose_memory in dieser Runde
     description: 'Aktuelle Schlagzeilen von tagesschau.de (optional ein Ressort: ' + RESSORT_IDS.join(', ') + ').',
     userHint: 'Nachrichten („Was gibt es Neues?“)',
@@ -107,6 +111,8 @@ export const BRIEFING_TOOLS = [
   },
   {
     name: 'get_calendar_events',
+    risk: 'lesen',
+    sourceLabel: 'Terminen',
     externalData: true, // fremde Texte im Ergebnis → danach kein propose_memory in dieser Runde
     description: 'Liest die Termine von heute oder morgen aus dem Kalender des Handys (nur Android-App).',
     userHint: 'Termine („Welche Termine habe ich heute?“, nur App)',

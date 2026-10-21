@@ -1,5 +1,10 @@
+import { gate, markOrigin } from './risk.js';
+
 // Browser-freie Werkzeug-Registry. Jedes Werkzeug hat:
 //   name, description (DE), parameters (JSON-Schema),
+//   risk: 'lesen' | 'lokal' | 'schreiben' | 'aussen' (v0.9, siehe risk.js; fehlt → 'aussen'),
+//   confirms?: 'always' | 'system' | 'self', describe?(args) → { title, detail } für die zentrale Karte,
+//   externalData?: true (liefert fremde Texte → Taint), sourceLabel?: z. B. 'Nachrichten',
 //   execute(args, ctx) → { ok, message, needsConfirm?, confirm?, data?, unsupported? }
 //   localTriggers?: [{ re, parse(match, text) → args|null }]
 //
@@ -36,7 +41,16 @@ export function createToolRegistry(tools = []) {
       const t = byName.get(name);
       if (!t) return { ok: false, message: `Unbekanntes Werkzeug: ${name}.` };
       try {
-        return await t.execute(args || {}, ctx);
+        // Zentrale Regel (v0.9 W0): Risikoklasse + Taint entscheiden, ob eine Karte nötig ist.
+        const blocked = gate(t, args || {}, ctx || {});
+        if (blocked) return blocked;
+        const r = await t.execute(args || {}, ctx);
+        // Fremde Daten gelesen → Taint für den Rest der Runde, mit Herkunft für den Kartenhinweis
+        if (t.externalData && ctx?.turn) {
+          ctx.turn.external = true;
+          (ctx.turn.sources ||= new Set()).add(t.sourceLabel || 'fremden Quellen');
+        }
+        return markOrigin(r, ctx || {});
       } catch (e) {
         return { ok: false, message: `Werkzeug „${name}“ ist fehlgeschlagen: ${e.message || e}` };
       }

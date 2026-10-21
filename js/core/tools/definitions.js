@@ -29,6 +29,8 @@ const BASE_TOOLS = [
   // ---------- Anrufen ----------
   {
     name: 'call_phone',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Ruft eine Telefonnummer an (öffnet die Telefon-App).',
     userHint: 'Anrufen („Ruf die 0176… an“)',
     parameters: obj({ number: str('Telefonnummer, z. B. +491701234567 oder 01701234567') }, ['number']),
@@ -49,6 +51,8 @@ const BASE_TOOLS = [
   // ---------- SMS ----------
   {
     name: 'send_sms',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Öffnet die SMS-App mit Empfänger und optionalem Text.',
     userHint: 'SMS schreiben („Schreib eine SMS an 0176…: Hallo“)',
     parameters: obj({ number: str('Telefonnummer'), body: str('Nachrichtentext') }, ['number']),
@@ -68,6 +72,8 @@ const BASE_TOOLS = [
   // ---------- WhatsApp ----------
   {
     name: 'send_whatsapp',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Öffnet WhatsApp mit einer Nummer (international, ohne +) und optionalem Text.',
     userHint: 'WhatsApp („WhatsApp an 49176…: Hallo“)',
     parameters: obj({ number: str('Internationale Nummer ohne +, z. B. 491701234567'), body: str('Nachricht') }, ['number']),
@@ -88,6 +94,8 @@ const BASE_TOOLS = [
   // ---------- E-Mail ----------
   {
     name: 'send_email',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Öffnet die E-Mail-App mit Empfänger, Betreff und Text.',
     userHint: 'E-Mail („Schreib eine Mail an max@example.com“)',
     parameters: obj({
@@ -113,6 +121,8 @@ const BASE_TOOLS = [
   // ---------- Navigation ----------
   {
     name: 'navigate',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Öffnet Google Maps zur Navigation oder Suche eines Ortes.',
     userHint: 'Navigation („Navigiere zum Hauptbahnhof“ / „Zeig mir Berlin auf der Karte“)',
     parameters: obj({ query: str('Ort oder Adresse'), mode: str('driving, walking, transit oder search') }, ['query']),
@@ -139,6 +149,8 @@ const BASE_TOOLS = [
   // ---------- YouTube ----------
   {
     name: 'open_youtube',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Öffnet YouTube mit einer Suche oder einem Kanal.',
     userHint: 'YouTube („Such auf YouTube nach …“)',
     parameters: obj({ query: str('Suchbegriff') }, ['query']),
@@ -159,6 +171,8 @@ const BASE_TOOLS = [
   // ---------- Spotify ----------
   {
     name: 'open_spotify',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Öffnet Spotify mit einer Suche (Titel, Artist, Playlist).',
     userHint: 'Spotify („Spiel auf Spotify …“ / „Such auf Spotify nach …“)',
     parameters: obj({ query: str('Suchbegriff') }, ['query']),
@@ -179,6 +193,8 @@ const BASE_TOOLS = [
   // ---------- Website ----------
   {
     name: 'open_website',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Schlägt vor, eine Website im Browser zu öffnen. Du darfst passende Seiten selbst vorschlagen. ' +
       'Der Nutzer sieht die vollständige Adresse und muss bestätigen; vorher wird nichts geöffnet.',
     userHint: 'Website öffnen („Öffne wikipedia.org“)',
@@ -196,6 +212,8 @@ const BASE_TOOLS = [
   },
   {
     name: 'search_web',
+    risk: 'aussen',
+    confirms: 'always',
     description: 'Schlägt eine Websuche vor: öffnet nach Bestätigung die Suchergebnisse (Google) im Browser. ' +
       'Nutze das, wenn der Nutzer etwas im Netz nachschauen möchte und du keine passende Seite kennst.',
     userHint: 'Im Netz suchen („Such im Internet nach …“)',
@@ -217,6 +235,9 @@ const BASE_TOOLS = [
   // ---------- Teilen ----------
   {
     name: 'share_text',
+    risk: 'aussen',
+    confirms: 'system',
+    describe: ({ text }) => ({ title: 'Text teilen?', detail: String(text || '') }),
     description: 'Öffnet den System-Teilen-Dialog mit einem Text.',
     userHint: 'Text teilen („Teile den Text: …“)',
     parameters: obj({ text: str('Zu teilender Text'), title: str('Optionaler Titel') }, ['text']),
@@ -247,6 +268,7 @@ const BASE_TOOLS = [
   // ---------- Vibration ----------
   {
     name: 'vibrate',
+    risk: 'lokal',
     description: 'Lässt das Gerät kurz vibrieren.',
     userHint: 'Vibrieren („Vibriere kurz“)',
     parameters: obj({ pattern: str('Optional: "short", "long" oder ms-Zahl') }),
@@ -268,6 +290,7 @@ const BASE_TOOLS = [
   // ---------- Akku ----------
   {
     name: 'get_battery',
+    risk: 'lesen',
     description: 'Liest den aktuellen Akkustand aus.',
     userHint: 'Akkustand („Wie voll ist der Akku?“)',
     parameters: obj({}),
@@ -288,6 +311,7 @@ const BASE_TOOLS = [
   // ---------- Standort ----------
   {
     name: 'get_location',
+    risk: 'lesen',
     description: 'Ermittelt den aktuellen Standort (GPS) und optional eine Karten-URL.',
     userHint: 'Standort („Wo bin ich?“)',
     parameters: obj({}),
@@ -315,6 +339,8 @@ const BASE_TOOLS = [
   // ---------- Zwischenablage ----------
   {
     name: 'copy_to_clipboard',
+    risk: 'schreiben',
+    describe: ({ text }) => ({ title: 'In die Zwischenablage kopieren?', detail: String(text || '') }),
     description: 'Kopiert einen Text in die Zwischenablage.',
     userHint: 'Zwischenablage („Kopiere …“)',
     parameters: obj({ text: str('Zu kopierender Text') }, ['text']),
@@ -336,6 +362,7 @@ const BASE_TOOLS = [
   // ---------- Taschenlampe ----------
   {
     name: 'set_flashlight',
+    risk: 'lokal',
     description: 'Schaltet die Taschenlampe (Kamera-Blitz) ein oder aus, falls unterstützt.',
     userHint: 'Taschenlampe („Taschenlampe an/aus“) – nur falls der Browser es erlaubt',
     parameters: obj({ on: { type: 'boolean', description: 'true = an, false = aus' } }, ['on']),
@@ -358,6 +385,7 @@ const BASE_TOOLS = [
   // ---------- Timer (auch als Tool für die KI) ----------
   {
     name: 'set_timer',
+    risk: 'lokal',
     description: 'Stellt einen Timer. Dauer als Text, z. B. „5 Minuten“ oder „1 Stunde 30 Minuten“.',
     userHint: 'Timer („Stell einen Timer auf 5 Minuten“)',
     parameters: obj({ duration: str('Dauer auf Deutsch, z. B. 5 Minuten') }, ['duration']),
@@ -372,6 +400,7 @@ const BASE_TOOLS = [
   },
   {
     name: 'cancel_timers',
+    risk: 'lokal',
     description: 'Stoppt alle laufenden Timer.',
     userHint: 'Timer stoppen',
     parameters: obj({}),
@@ -384,6 +413,8 @@ const BASE_TOOLS = [
   // ---------- Notizen (für die KI) ----------
   {
     name: 'add_note',
+    risk: 'schreiben',
+    describe: ({ text }) => ({ title: 'Notiz anlegen?', detail: String(text || '') }),
     description: 'Legt eine kurze Notiz an (Listen, Dinge für später), wenn der Nutzer „notiere“ oder „schreib auf“ sagt. ' +
       'Für Fakten über den Nutzer stattdessen propose_memory verwenden.',
     userHint: 'Notizen („Notiere …“, „Schreib auf …“, „Meine Notizen“)',
@@ -399,6 +430,7 @@ const BASE_TOOLS = [
   },
   {
     name: 'list_notes',
+    risk: 'lesen',
     description: 'Listet alle gespeicherten Notizen.',
     userHint: 'Notizen abfragen („Meine Notizen“)',
     parameters: obj({}),
@@ -413,6 +445,9 @@ const BASE_TOOLS = [
   // ---------- App öffnen (nativ besser) ----------
   {
     name: 'open_app',
+    risk: 'aussen',
+    confirms: 'self',
+    describe: ({ name }) => ({ title: `App „${String(name || '').slice(0, 40)}“ öffnen?`, detail: 'App starten' }),
     description: 'Öffnet eine installierte App anhand ihres Namens (z. B. Instagram, Einstellungen).',
     userHint: 'App öffnen („Öffne Instagram“)',
     parameters: obj({ name: str('Anzeigename der App') }, ['name']),
@@ -437,6 +472,7 @@ const BASE_TOOLS = [
   // ---------- Lautstärke ----------
   {
     name: 'adjust_volume',
+    risk: 'lokal',
     description: 'Lautstärke erhöhen, verringern oder stummschalten.',
     userHint: 'Lautstärke („Lauter“ / „Leiser“ / „Stumm“)',
     parameters: obj({ direction: str('up, down oder mute') }, ['direction']),
@@ -458,6 +494,9 @@ const BASE_TOOLS = [
   // ---------- WLAN / Bluetooth Einstellungen ----------
   {
     name: 'open_settings_panel',
+    risk: 'aussen',
+    confirms: 'system',
+    describe: ({ panel }) => ({ title: `${/blue/i.test(panel || '') ? 'Bluetooth' : 'WLAN'}-Einstellungen öffnen?`, detail: '' }),
     description: 'Öffnet WLAN- oder Bluetooth-Einstellungen. Umschalten direkt ist ab Android 10 nicht erlaubt.',
     userHint: 'WLAN/Bluetooth-Einstellungen öffnen',
     parameters: obj({ panel: str('wifi oder bluetooth') }, ['panel']),
@@ -481,6 +520,8 @@ const BASE_TOOLS = [
   // ---------- System-Timer (Uhr-App) ----------
   {
     name: 'set_system_timer',
+    risk: 'schreiben',
+    describe: ({ duration }) => ({ title: `Timer in der Uhr-App: ${duration || '?'}?`, detail: 'Uhr-App-Timer' }),
     description: 'Setzt einen Timer in der Android-Uhr-App (überlebt das Schließen von Jarvis).',
     userHint: 'System-Timer („System-Timer 10 Minuten“)',
     parameters: obj({ duration: str('Dauer, z. B. 10 Minuten') }, ['duration']),
@@ -500,6 +541,8 @@ const BASE_TOOLS = [
 
   {
     name: 'set_alarm',
+    risk: 'schreiben',
+    describe: ({ time, label }) => { const c = parseAlarmTime(String(time || '')); return { title: c ? `Wecker für ${alarmSpoken(c)} stellen?` : 'Wecker stellen?', detail: String(label || 'Jarvis Wecker') }; },
     description: 'Stellt einen Wecker in der Android-Uhr-App (im Hintergrund, Jarvis bleibt offen). time = Uhrzeit, z. B. 7:30 oder 7 Uhr. ' +
       'Ohne Uhrzeit fragt Jarvis nach.',
     userHint: 'Wecker stellen („Stell einen Wecker auf 7 Uhr“)',
@@ -525,15 +568,7 @@ const BASE_TOOLS = [
       }
       const spoken = alarmSpoken(c);
       const msg = String(label || 'Jarvis Wecker').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Jarvis Wecker';
-      // Hat die KI den Wecker vorgeschlagen, während fremde Texte (Nachrichten/Termine) im Kontext stehen,
-      // fragt Jarvis vorher (der Wecker wird im Hintergrund ohne Uhr-App-Ansicht gestellt).
-      if (ctx.viaAI && ctx.turn?.external && !ctx.confirmed) {
-        return {
-          ok: true, needsConfirm: true,
-          message: `Soll ich einen Wecker für ${spoken} stellen? Tippen Sie auf Ja oder sagen Sie „Ja“.`,
-          confirm: { title: `Wecker für ${spoken} stellen?`, detail: msg, action: { type: 'setAlarm', hour: c.hour, minute: c.minute, label: msg } }
-        };
-      }
+      // Bestätigung nach fremden Daten übernimmt seit v0.9 die zentrale Regel (risk 'schreiben', risk.js).
       const r = await ctx.device.setSystemAlarm({ hour: c.hour, minute: c.minute, message: msg });
       if (r?.ok && r.opened) {
         // Ersatzweg (Uhr-App erlaubt kein Stellen im Hintergrund): ehrlich sagen, dass noch ein Tipp fehlt.
@@ -554,6 +589,7 @@ const BASE_TOOLS = [
   // ---------- Hilfe ----------
   {
     name: 'list_capabilities',
+    risk: 'lesen',
     description: 'Listet alle Fähigkeiten und Werkzeuge von Jarvis.',
     userHint: 'Hilfe („Was kannst du?“)',
     parameters: obj({}),
