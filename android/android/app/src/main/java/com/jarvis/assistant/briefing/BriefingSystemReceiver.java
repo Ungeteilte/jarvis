@@ -6,6 +6,8 @@ import android.content.Intent;
 
 import androidx.core.app.NotificationManagerCompat;
 
+import com.jarvis.assistant.events.EventReminders;
+
 import java.util.TimeZone;
 
 /**
@@ -15,11 +17,21 @@ import java.util.TimeZone;
 public class BriefingSystemReceiver extends BroadcastReceiver {
     public static final String ACTION_PAUSE = "com.jarvis.assistant.briefing.PAUSE_TODAY";
     public static final String ACTION_OFF = "com.jarvis.assistant.briefing.OFF";
+    static final String ACTION_EXACT_CHANGED = "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED";
 
     @Override
     public void onReceive(Context c, Intent intent) {
         String a = intent == null ? null : intent.getAction();
         if (a == null) return;
+        // v0.9.4 Termin-Hinweise: nach Neustart/Update/Zeitzone/Änderung der Alarm-Freigabe neu planen
+        if (Intent.ACTION_BOOT_COMPLETED.equals(a) || Intent.ACTION_MY_PACKAGE_REPLACED.equals(a)
+            || Intent.ACTION_TIMEZONE_CHANGED.equals(a) || ACTION_EXACT_CHANGED.equals(a)) {
+            final PendingResult pr = goAsync();
+            final Context app = c.getApplicationContext();
+            new Thread(() -> {
+                try { EventReminders.apply(app); } catch (Exception ignored) {} finally { pr.finish(); }
+            }, "jarvis-event-apply").start();
+        }
         switch (a) {
             case Intent.ACTION_BOOT_COMPLETED:
             case Intent.ACTION_MY_PACKAGE_REPLACED:

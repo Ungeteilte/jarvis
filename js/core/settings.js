@@ -3,6 +3,7 @@ import { DEFAULT_BRIEFING, normalizeBriefingConfig } from './briefing/trigger.js
 import { RESSORT_IDS } from './briefing/news.js';
 import { DEFAULT_EVENING, normalizeEveningConfig } from './briefing/evening-config.js';
 import { DEFAULT_WEEKLY, normalizeWeeklyConfig } from './briefing/weekly-config.js';
+import { DEFAULT_EVENT_REMINDERS, normalizeEventRemindersConfig } from './event-reminders.js';
 import { DEFAULT_PREFS, normalizePrefs } from './prefs.js';
 
 export const PROVIDERS = Object.freeze({
@@ -53,6 +54,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   briefing: DEFAULT_BRIEFING,
   evening: DEFAULT_EVENING,
   weekly: DEFAULT_WEEKLY, // v0.9.3: Wochenrückblick sonntags (ersetzt dann die Abendzusammenfassung)
+  eventReminders: DEFAULT_EVENT_REMINDERS, // v0.9.4: Termin-Hinweise vor Kalender-Terminen (nur Android-App)
   memoryToAI: true, // Gedächtnis-Einträge mit an die KI senden (abschaltbar)
   prefs: DEFAULT_PREFS
 });
@@ -72,6 +74,7 @@ export function loadSettings(store) {
     listenOnOpen: s.listenOnOpen === true,
     evening: normalizeEveningConfig(s.evening),
     weekly: normalizeWeeklyConfig(s.weekly),
+    eventReminders: normalizeEventRemindersConfig(s.eventReminders),
     memoryToAI: typeof s.memoryToAI === 'boolean' ? s.memoryToAI : DEFAULT_SETTINGS.memoryToAI,
     prefs: normalizePrefs(s.prefs)
   };

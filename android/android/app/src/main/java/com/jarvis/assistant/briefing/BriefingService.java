@@ -18,6 +18,8 @@ import androidx.core.content.ContextCompat;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.jarvis.assistant.events.EventReminders;
+
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -113,6 +115,7 @@ public class BriefingService extends Service {
             : BriefingRules.decideEvening(now, tz, lastActivity,
                 BriefingState.lastBriefingAt(c), BriefingState.lastEveningDay(c),
                 BriefingState.eveningEnabled(c), BriefingState.onboarded(c), BriefingState.eveningStartHour(c));
+        if (!fromBoot) EventReminders.onUnlock(c, now); // v0.9.4: kurzfristig eingetragene Termine (höchstens alle 15 Min.)
         if (!fromBoot) BriefingState.recordUnlock(c, now);
         BriefingRules.Decision go = d.ok ? d : e;
         if (go == null || !go.ok || go.day.equals(BriefingState.pausedDay(c)) || !busy.compareAndSet(false, true)) return;

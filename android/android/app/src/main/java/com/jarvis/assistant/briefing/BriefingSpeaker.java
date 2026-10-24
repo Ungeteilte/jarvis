@@ -22,11 +22,11 @@ import java.util.concurrent.TimeUnit;
  * „Nicht stören“ aus, Medienlautstärke > 0, Audio-Fokus erhalten. Lautstärke wird nie verändert.
  * Lautsprecher, Kopfhörer, Bluetooth und Auto sind erlaubt (Wunsch des Nutzers).
  */
-final class BriefingSpeaker {
+public final class BriefingSpeaker {
     private BriefingSpeaker() {}
 
     /** Gründe gegen das Vorlesen (null = darf). */
-    static String blockReason(Context c) {
+    public static String blockReason(Context c) {
         AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return "audio";
         if (am.getMode() != AudioManager.MODE_NORMAL) return "call";
@@ -39,7 +39,7 @@ final class BriefingSpeaker {
     }
 
     /** Spricht blockierend (max. 90 s). true = vorgelesen. Auf einem Hintergrund-Thread aufrufen. */
-    static boolean speak(Context c, String text) {
+    public static boolean speak(Context c, String text) {
         if (blockReason(c) != null) return false;
         AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
         AudioAttributes attrs = new AudioAttributes.Builder()

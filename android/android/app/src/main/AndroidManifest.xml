@@ -84,8 +84,13 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
+        <!-- v0.9.4 Termin-Hinweise: nur der eigene Alarm (PendingIntent) erreicht ihn – nicht exportiert, keine neue Berechtigung -->
+        <receiver
+            android:name=".events.EventReminderReceiver"
+            android:exported="false" />
     </application>
 
     <!-- Berechtigungen -->
@@ -142,6 +147,11 @@
         <intent>
             <action android:name="android.intent.action.INSERT" />
             <data android:mimeType="vnd.android.cursor.dir/event" />
+        </intent>
+        <!-- v0.9.4: Termin-Hinweis antippen → Termin in der Kalender-App öffnen (nur lesend) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="vnd.android.cursor.item/event" />
         </intent>
         <intent>
             <action android:name="android.speech.RecognitionService" />

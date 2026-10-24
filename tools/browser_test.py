@@ -607,6 +607,19 @@ with sync_playwright() as p:
     wcfg = wpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).weekly")
     check("Woche: Einstellungen gespeichert", wcfg.get("enabled") is True and wcfg.get("hour") == 20)
     wpage.screenshot(path=str(SHOTS / "weekly.png"))
+    # 8c) v0.9.4: Termin-Hinweise – im Browser nur Hinweis „nur in der Android-App“, Sprachbefehl speichert trotzdem
+    wpage.fill("#input", "Terminhinweise 30 Minuten vorher"); wpage.click("#btn-send"); wpage.wait_for_timeout(600)
+    er = wpage.locator(".msg.assistant").last.inner_text()
+    ecfg = wpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).eventReminders")
+    check("Termine: 'Terminhinweise 30 Minuten vorher' per Sprache", ecfg == {"enabled": True, "leadMin": 30, "speak": False} and "30 Minuten" in er)
+    open_settings(wpage, 300)
+    check("Termine: im Browser Hinweis in „Werkzeuge & Berechtigungen“, Schalter nur in der App",
+          wpage.locator("#grp-tools #ev-block .web-only").is_visible() and not wpage.is_visible("#set-ev-enabled")
+          and wpage.locator("#set-ev-lead option").count() == 5 and wpage.input_value("#set-ev-lead") == "30")
+    wpage.click(".settings-save .btn"); wpage.wait_for_timeout(300)
+    ecfg = wpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).eventReminders")
+    check("Termine: Speichern im Browser lässt die Einstellung unverändert", ecfg == {"enabled": True, "leadMin": 30, "speak": False})
+    check("Termine: kein Netzabruf dafür", wnet["other"] == [])
     wctx.close()
 
     # 9) v0.8: Gedächtnis, Vorlieben, Zaun im Prompt, Websites nur nach Bestätigung, keine Links in Antworten

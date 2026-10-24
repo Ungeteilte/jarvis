@@ -56,6 +56,7 @@ import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import com.jarvis.assistant.events.EventReminders;
 
 import com.jarvis.assistant.briefing.BackgroundSpeech;
 import com.jarvis.assistant.briefing.BriefingLaunch;
@@ -986,6 +987,7 @@ public class JarvisNativePlugin extends Plugin {
 
     @PermissionCallback
     private void calendarPermCallback(PluginCall call) {
+        EventReminders.applyAsync(getContext()); // gerade erlaubt (oder abgelehnt) → Termin-Hinweise einrichten bzw. abbauen
         if (getPermissionState("calendar") != PermissionState.GRANTED) {
             JSObject r = new JSObject();
             r.put("ok", false);
@@ -1017,6 +1019,26 @@ public class JarvisNativePlugin extends Plugin {
         call.resolve(r);
     }
 
+    // ---------- v0.9.4 Termin-Hinweise ----------
+    /** Stand für die Einstellungen; plant dabei im Hintergrund neu (Erlaubnisse können sich geändert haben). */
+    @PluginMethod
+    public void getEventReminderStatus(PluginCall call) {
+        try {
+            EventReminders.applyAsync(getContext());
+            call.resolve(JSObject.fromJSONObject(EventReminders.status(getContext())));
+        } catch (Exception e) {
+            call.reject("Status nicht verfügbar");
+        }
+    }
+
+    /** Beispiel-Hinweis aus den Einstellungen (keine Daten nach außen). */
+    @PluginMethod
+    public void testEventReminder(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("ok", EventReminders.test(getContext()));
+        call.resolve(r);
+    }
+
     /** Einstellungen + Aktivität aus der App für den Hintergrund (JSON, max. 16 KB). */
     @PluginMethod
     public void syncBriefing(PluginCall call) {
@@ -1024,6 +1046,7 @@ public class JarvisNativePlugin extends Plugin {
             BriefingState.saveSync(getContext(), call.getString("json", "{}"));
             if (!BriefingState.anyEnabled(getContext()) && BriefingService.isRunning()) BriefingScheduler.cancel(getContext());
             else { try { BriefingScheduler.refresh(getContext()); } catch (Exception ignored) {} }
+            EventReminders.applyAsync(getContext()); // v0.9.4: Termin-Hinweise neu planen (unabhängig vom Briefing)
             call.resolve(briefingStateObject());
         } catch (Exception e) {
             call.reject("Briefing-Daten ungültig");

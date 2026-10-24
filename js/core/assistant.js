@@ -11,6 +11,7 @@ import { buildExport } from './files.js';
 import { parseWhen } from './reminders.js';
 import { buildIcs } from './calendar-draft.js';
 import { undoNotes, UNDO_KEY as NOTE_UNDO_KEY, UNDO_MS as NOTE_UNDO_MS } from './notes.js';
+import { eventRemindersCommand, normalizeEventRemindersConfig } from './event-reminders.js';
 import { loadSettings, saveSettings, resolveProvider } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
@@ -347,6 +348,9 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       const wcmd = weeklyCommand(input, wcfg, (next) => saveSettings(store, { weekly: normalizeWeeklyConfig(next) }));
       if (wcmd) return add('assistant', wcmd, { source: 'skill', settingsChanged: true });
       if (isWeeklyRequest(input)) return brief({ onDelta, signal, auto: false, replyTo: userMsg.id, kind: 'weekly' });
+      // 0a+) Termin-Hinweise (v0.9.4): „Terminhinweise aus/an“, „Terminhinweise 30 Minuten vorher“
+      const evcmd = eventRemindersCommand(input, loadSettings(store).eventReminders, (next) => saveSettings(store, { eventReminders: normalizeEventRemindersConfig(next) }));
+      if (evcmd) return add('assistant', evcmd, { source: 'skill', settingsChanged: true });
       // 0b) Abendzusammenfassung: „Abendzusammenfassung aus/an“, „Wie war mein Tag?“
       const ecfg = normalizeEveningConfig(loadSettings(store).evening);
       const ecmd = eveningCommand(input, ecfg, (next) => saveSettings(store, { evening: normalizeEveningConfig(next) }));

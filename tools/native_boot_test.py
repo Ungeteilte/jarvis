@@ -116,6 +116,10 @@ FAKE = r"""
     shareTextFile: (a) => { (window.__nat.shared = window.__nat.shared || []).push(a); return lat({ ok: true }); },
     stopSpeaking: rec('stopSpeaking', {}),
     listVoices: rec('listVoices', { voices: [{ id: 'de-de-x-deb-local', name: 'de-de-x-deb-local', lang: 'de-DE', default: true }] }),
+    // v0.9.4: Termin-Hinweise (Status, Test) + Sync-Inhalt mitschreiben
+    syncBriefing: (a) => { (window.__nat.syncs = window.__nat.syncs || []).push(JSON.parse(a.json)); return lat({}); },
+    getEventReminderStatus: () => { window.__nat.calls.push('getEventReminderStatus'); return lat({ enabled: true, leadMin: 15, calendar: CFG.evCal || 'denied', notifications: true, exact: false, nextAt: CFG.evNext || 0 }); },
+    testEventReminder: rec('testEventReminder', { ok: true }),
     getUpdateStatus: rec('getUpdateStatus', { enabled: true, intervalHours: 6, wifiOnly: false, status: 'up-to-date', installedVersionName: '0.5', installedVersionCode: 5, notificationsAllowed: true }),
     __emitListen: (o) => { window.__nat.listenPending = o; (st.cbs.listenLaunch || []).forEach((cb) => cb({ listen: !!o.listen })); },
     addListener: (name, cb) => { (st.cbs[name] = st.cbs[name] || []).push(cb); return { remove() {} }; }
@@ -466,6 +470,16 @@ with sync_playwright() as pw:
     check("App-Einstellungen: Benachrichtigungen lesen gesperrt, kein Plugin-Aufruf dazu",
           page.evaluate("[...document.querySelectorAll('#notif-fieldset input')].every((i) => i.disabled)")
           and not any("otif" in c and "Listener" in c for c in page.evaluate("window.__nat.calls")))
+    # v0.9.4 Termin-Hinweise: Bereich in „Werkzeuge & Berechtigungen“, Status, Erlaubnis beim Einschalten, Test, Sync
+    check("App-Einstellungen: Termin-Hinweise in „Werkzeuge & Berechtigungen“ (an, 15 Min., Vorlesen aus)",
+          page.locator("#grp-tools #set-ev-enabled").is_visible() and page.is_checked("#set-ev-enabled")
+          and page.input_value("#set-ev-lead") == "15" and not page.is_checked("#set-ev-speak"))
+    check("App-Einstellungen: Termin-Status ohne Kalender-Erlaubnis + Knopf", "Kalender-Erlaubnis" in page.inner_text("#ev-status") and page.is_visible("#btn-ev-cal"))
+    page.uncheck("#set-ev-enabled"); page.check("#set-ev-enabled"); page.wait_for_timeout(400)
+    check("App-Einstellungen: Einschalten fragt nach dem Kalender", "getCalendarEvents" in page.evaluate("window.__nat.calls"))
+    safe(page.click, "#btn-ev-test", timeout=3000); page.wait_for_timeout(300)
+    check("App-Einstellungen: Test-Hinweis über das Plugin", "testEventReminder" in page.evaluate("window.__nat.calls"))
+    page.select_option("#set-ev-lead", "30"); page.check("#set-ev-speak")
     page.check("#set-wake-mute") if not page.is_checked("#set-wake-mute") else page.uncheck("#set-wake-mute")
     want = page.is_checked("#set-wake-mute")
     safe(page.click, ".settings-save .btn", timeout=3000)
@@ -473,6 +487,10 @@ with sync_playwright() as pw:
     stored = page.evaluate("JSON.parse(window.__secure['jarvis.settings'] || 'null')")
     check("App-Einstellungen: Speichern übernimmt den Schalter (sicherer Speicher), Schlüssel bleibt",
           bool(stored) and stored.get("wakeMuteBeep") == want and stored.get("apiKeys", {}).get("gemini") == "test-key")
+    syncs = page.evaluate("window.__nat.syncs || []")
+    check("App-Einstellungen: Termin-Hinweise gespeichert und an den nativen Teil übergeben",
+          stored and stored.get("eventReminders") == {"enabled": True, "leadMin": 30, "speak": True}
+          and bool(syncs) and syncs[-1].get("events") == {"enabled": True, "leadMin": 30, "speak": True})
     check("App-Einstellungen: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
