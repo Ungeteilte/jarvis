@@ -55,7 +55,7 @@ export const DEFAULT_BRIEFING = Object.freeze({
   enabled: true,
   gapHours: 4,
   latestHour: 14,
-  content: Object.freeze({ weather: true, calendar: true, news: true, battery: true, notes: true }),
+  content: Object.freeze({ weather: true, calendar: true, news: true, battery: true, notes: true, impulse: true }), // impulse: Morgen-Impuls (v0.9.5)
   newsRessorts: Object.freeze([]), // leer = alle Meldungen
   background: false,   // nur Android: „Im Hintergrund bereithalten“
   speakAloud: false,   // nur Android: im Hintergrund laut vorlesen

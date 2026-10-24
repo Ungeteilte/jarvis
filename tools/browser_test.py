@@ -2,7 +2,7 @@
    python3 -m http.server 8080  im Projektordner starten.
 Aufruf: python3 tools/browser_test.py [URL]
 """
-import json, sys
+import json, re, sys
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -401,6 +401,11 @@ with sync_playwright() as p:
         bpage.click("#btn-mute"); bpage.wait_for_timeout(200)  # stumm, headless hängt sonst
         check("Briefing: KI-Text angezeigt", bpage.locator(".msg.assistant", has_text="Heute wird es bewölkt").count() == 1)
         check("Briefing: vorgelesen (speechSynthesis)", bpage.evaluate("window.__speakCalls.length") >= 1)
+        btxt = bpage.locator(".msg.assistant", has_text="Heute wird es bewölkt").last.inner_text() if bpage.locator(".msg.assistant", has_text="Heute wird es bewölkt").count() else ""
+        check("Impuls: Morgen-Impuls direkt vor der Rückfrage (Rückfrage bleibt letzter Satz)",
+              bool(re.search(r"12 Grad\. (Übrigens|Und ein Gedanke für heute): [^?]+\. Soll ich die Nachrichten vorlesen\?$", btxt.strip())))
+        if "Übrigens" not in btxt and "Gedanke für heute" not in btxt: print("  Briefing-Text:", btxt[-200:])
+        check("Impuls: KI soll keinen eigenen Spruch ergänzen", "keinen eigenen Spruch" in json.dumps(bnet["ai"][:1], ensure_ascii=False))
         wurl = bnet["weather"][0] if bnet["weather"] else ""
         check("Briefing: Open-Meteo mit gerundetem Ort", "latitude=52.52&longitude=13.4" in wurl and "520008" not in wurl)
         check("Briefing: tagesschau-RSS (alle Meldungen)", any("alle-meldungen-100~rss2.xml" in u for u in bnet["news"]))
@@ -426,12 +431,16 @@ with sync_playwright() as p:
         check("Briefing: Einstellungen sichtbar (Ressorts, spätestens bis)", bpage.is_visible("#briefing-fieldset") and bpage.locator("#brief-ressorts input").count() >= 5
               and bpage.locator("#set-brief-latest option").count() == 16)
         check("Briefing: Hintergrund-Optionen nur in der App", not bpage.is_visible("#set-brief-bg"))
+        check("Impuls: Schalter in „Morgen-Briefing & Abend“, Standard an",
+              bpage.locator("#grp-briefing #set-brief-impulse").count() == 1 and bpage.is_visible("#set-brief-impulse") and bpage.is_checked("#set-brief-impulse"))
+        bpage.uncheck("#set-brief-impulse")
         bpage.select_option("#set-brief-latest", "20")
         bpage.check("#brief-ressorts input[value='sport']")
         bpage.click("#settings-form button[type=submit]") if bpage.locator("#settings-form button[type=submit]").count() else bpage.click("#btn-save")
         bpage.wait_for_timeout(300)
         cfg = bpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).briefing")
         check("Briefing: Einstellungen gespeichert", cfg.get("latestHour") == 20 and cfg.get("newsRessorts") == ["sport"])
+        check("Impuls: Abschalten gespeichert", cfg.get("content", {}).get("impulse") is False)
         bpage.screenshot(path=str(SHOTS / "briefing.png"))
         bctx.close()
 

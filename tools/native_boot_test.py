@@ -491,6 +491,9 @@ with sync_playwright() as pw:
     check("App-Einstellungen: Termin-Hinweise gespeichert und an den nativen Teil übergeben",
           stored and stored.get("eventReminders") == {"enabled": True, "leadMin": 30, "speak": True}
           and bool(syncs) and syncs[-1].get("events") == {"enabled": True, "leadMin": 30, "speak": True})
+    # v0.9.5 Morgen-Impuls: Schalter in „Morgen-Briefing & Abend“, Standard an
+    check("App-Einstellungen: Morgen-Impuls-Schalter in „Morgen-Briefing & Abend“ (an)",
+          page.locator("#grp-briefing #set-brief-impulse").count() == 1 and page.is_checked("#set-brief-impulse"))
     check("App-Einstellungen: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()

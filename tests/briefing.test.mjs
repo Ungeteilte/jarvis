@@ -370,7 +370,8 @@ test('brief() mit KI: ohne Werkzeuge, Daten im Zaun; KI-Fehler → Vorlage', asy
   };
   const { assistant } = setup({ apiKey: 'sk-test', device: geoDevice(), fetchFn });
   const msg = await assistant.brief({ auto: true });
-  assert.equal(msg.text, 'Guten Morgen, Sir. Soll ich mehr sagen?');
+  // v0.9.5: Morgen-Impuls (Standard an) steht direkt vor der Rückfrage; die Rückfrage bleibt der letzte Satz
+  assert.match(msg.text, /^Guten Morgen, Sir\. (Übrigens|Und ein Gedanke für heute): .+\. Soll ich mehr sagen\?$/);
   assert.equal(bodies.length, 1);
   assert.equal(bodies[0].tools, undefined, 'Briefing ohne Werkzeuge');
   const user = bodies[0].messages[1].content;

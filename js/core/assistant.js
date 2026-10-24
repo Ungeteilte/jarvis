@@ -19,7 +19,7 @@ import { createLocalTransport, makeMsgEvent, makeDeltaEvent, newId } from './rea
 import { createToolRegistry } from './tools/registry.js';
 import { askAIStream } from './ai.js';
 import {
-  gatherFacts, buildBriefingMessages, templateBriefing, factsContext, localFollowUp,
+  gatherFacts, buildBriefingMessages, templateBriefing, factsContext, localFollowUp, pickImpulse, createImpulseRelay,
   isBriefingRequest, handleBriefingCommand, saveBriefingState, loadBriefingState, dayKey, RESSORT_IDS, normalizeBriefingConfig,
   gatherEveningFacts, buildEveningMessages, templateEvening, eveningContext, eveningFollowUp,
   isEveningRequest, eveningCommand, normalizeEveningConfig,
@@ -224,17 +224,26 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         history: history.filter((m) => m.source !== 'briefing'), firedTimers: loadBriefingState(store).firedTimers || []
       })
       : await gatherFacts({ registry: tools, ctx: c, cfg });
+    // v0.9.5 Morgen-Impuls: lokal gewählt (kein Netz), steht direkt vor der abschließenden Rückfrage
+    let impulse = '';
+    if (!weekly && !evening && cfg.content.impulse) {
+      const pick = pickImpulse(store.get('impulse', null), dayKey(nowMs, timeZone));
+      store.set('impulse', pick.state);
+      impulse = pick.text;
+    }
+    const ir = impulse ? createImpulseRelay(relay, impulse) : null;
     const pcfg = resolveProvider(settings);
     let text = '';
     let source = 'briefing';
     if (pcfg.apiKey) {
       try {
         const msgs = weekly ? buildWeeklyMessages({ name: c.name, facts })
-          : evening ? buildEveningMessages({ name: c.name, facts }) : buildBriefingMessages({ name: c.name, facts });
+          : evening ? buildEveningMessages({ name: c.name, facts }) : buildBriefingMessages({ name: c.name, facts, impulse: Boolean(impulse) });
         const out = await askAIStream(pcfg, msgs, {
-          onDelta: relay, fetchFn, signal, timeoutMs: 25000, stream
+          onDelta: ir ? (d) => ir.push(d) : relay, fetchFn, signal, timeoutMs: 25000, stream
         });
         text = String(out.data?.choices?.[0]?.message?.content || '').trim();
+        if (text && ir) text = ir.finish(text);
       } catch (e) {
         if (e?.code === 'aborted') throw e;
         text = '';
@@ -243,7 +252,7 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     if (!text) {
       if (emitted) relay({ type: 'reset' });
       text = weekly ? templateWeekly(facts, { name: c.name })
-        : evening ? templateEvening(facts, { name: c.name }) : templateBriefing(facts, { name: c.name });
+        : evening ? templateEvening(facts, { name: c.name }) : templateBriefing(facts, { name: c.name, impulse });
       relay({ type: 'text', text });
       source = 'briefing';
     }

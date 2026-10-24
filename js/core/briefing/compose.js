@@ -20,7 +20,7 @@ const QUESTIONS = {
   null: 'Womit kann ich Ihnen heute behilflich sein?'
 };
 
-export function buildBriefingMessages({ name = 'Jarvis', facts }) {
+export function buildBriefingMessages({ name = 'Jarvis', facts, impulse = false }) {
   const system = [
     `Du bist ${name}, ein höflicher, geistreicher persönlicher Assistent im Stil eines britischen Butlers. Du sprichst Deutsch und siezt den Nutzer.`,
     'Deine Antwort wird vorgelesen: kein Markdown, keine Aufzählungszeichen, keine Emojis, keine Links, keine Koordinaten.',
@@ -28,14 +28,15 @@ export function buildBriefingMessages({ name = 'Jarvis', facts }) {
     'Nenne nur Fakten aus den Daten und erfinde nichts. Fehlt etwas, lass es weg oder erwähne es höchstens in einem Halbsatz.',
     'Nachrichten nur als kurze Schlagzeilen in eigenen Worten, höchstens drei. Akku nur erwähnen, wenn er unter 30 Prozent ist.',
     'Beende das Briefing mit genau einer natürlichen Rückfrage, zum Beispiel „Soll ich Ihnen mehr zu … sagen?“.',
+    ...(impulse ? ['Füge keinen eigenen Spruch, kein Zitat und keinen Fun Fact hinzu – einen kurzen Morgen-Impuls ergänzt die App selbst.'] : []),
     DATA_RULE
-  ].join('\n');
+  ].filter(Boolean).join('\n');
   const user = `${fenceData(facts)}\nErstelle jetzt das Morgen-Briefing.`;
   return [{ role: 'system', content: system }, { role: 'user', content: user }];
 }
 
 /** Kurzes Briefing ohne KI (oder wenn die KI ausfällt). */
-export function templateBriefing(facts, { name = 'Jarvis' } = {}) {
+export function templateBriefing(facts, { name = 'Jarvis', impulse = '' } = {}) {
   const parts = [`Guten Morgen. Heute ist ${facts.date}, es ist ${facts.time} Uhr.`];
   if (facts.weather) parts.push(weatherSentence({ ...facts.weather, day: 'heute' }, { stale: facts.weather.stale }));
   else if (facts.weatherNote) parts.push(facts.weatherNote);
@@ -57,6 +58,7 @@ export function templateBriefing(facts, { name = 'Jarvis' } = {}) {
   }
   if (facts.timers) parts.push(facts.timers === 1 ? 'Ein Timer läuft noch.' : `${facts.timers} Timer laufen noch.`);
   if (facts.notes?.length) parts.push(`Notiert hatten Sie zuletzt: ${facts.notes.at(-1)}.`);
+  if (impulse) parts.push(impulse); // v0.9.5: Morgen-Impuls direkt vor der Rückfrage – die Rückfrage bleibt der letzte Satz
   parts.push(QUESTIONS[followUpTopic(facts)]);
   return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').replace(/\.\./g, '.').trim() || `${name} wünscht einen guten Morgen.`;
 }
