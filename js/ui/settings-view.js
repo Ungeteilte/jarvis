@@ -7,6 +7,7 @@ import { loadNotes } from '../core/skills.js';
 import { loadMemory, addMemory, updateMemory, removeMemory, clearMemory, migrateNotes, exportMemory, importMemory, KATEGORIE_LABELS } from '../core/memory.js';
 import { PREF_OPTIONS, PREF_LABELS } from '../core/prefs.js';
 import { LISTEN_GUIDE } from '../core/listen-launch.js';
+import { EVENT_LEAD_OPTIONS, normalizeEventRemindersConfig } from '../core/event-reminders.js';
 import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig, WEEKLY_HOUR_OPTIONS, normalizeWeeklyConfig } from '../core/briefing/index.js';
 
 export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing, onTestEvening, onTestWeekly }) {
@@ -103,6 +104,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     fillBriefing(draft.briefing);
     fillEvening(draft.evening);
     fillWeekly(draft.weekly);
+    fillEvents(draft.eventReminders);
     renderExact();
     refreshVoices();
   }
@@ -228,6 +230,47 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     onTestWeekly?.();
   });
 
+  // ---------- Termin-Hinweise (v0.9.4, nur Android-App) ----------
+  const ev = { enabled: $('#set-ev-enabled'), lead: $('#set-ev-lead'), speak: $('#set-ev-speak'), status: $('#ev-status') };
+  const nev = device?.events || null;
+  ev.lead.replaceChildren(...EVENT_LEAD_OPTIONS.map((m) => new Option(`${m} Minuten vorher`, String(m))));
+  function fillEvents(cfg) {
+    ev.enabled.checked = cfg.enabled;
+    ev.lead.value = String(cfg.leadMin);
+    ev.speak.checked = cfg.speak;
+    renderEvents();
+  }
+  function readEvents() {
+    return normalizeEventRemindersConfig({ enabled: ev.enabled.checked, leadMin: Number(ev.lead.value), speak: ev.speak.checked });
+  }
+  async function renderEvents() {
+    if (!nev) { ev.status.textContent = ''; return; }
+    const st = await nev.status();
+    if (!st) { ev.status.textContent = ''; return; }
+    const clock = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const parts = [];
+    if (!st.enabled) parts.push('Termin-Hinweise: aus');
+    else if (st.calendar !== 'granted') parts.push('Termin-Hinweise: warten auf die Kalender-Erlaubnis');
+    else parts.push(st.nextAt ? `Nächster Hinweis: ${clock(st.nextAt)} Uhr` : 'Termin-Hinweise: aktiv – in den nächsten 36 Stunden kein Termin');
+    if (st.enabled && st.notifications === false) parts.push('Benachrichtigungen: aus');
+    if (st.enabled && st.exact === false) parts.push('ohne „Wecker & Erinnerungen“ ungefähr pünktlich');
+    ev.status.textContent = parts.join(' · ');
+    $('#btn-ev-cal')?.classList.toggle('hidden', st.calendar === 'granted');
+  }
+  // Einschalten fragt die nötigen Erlaubnisse gleich mit ab (Kalender lesen, Benachrichtigungen)
+  ev.enabled.addEventListener('change', async () => {
+    if (!ev.enabled.checked || !nb) return;
+    const st = nev ? await nev.status() : null;
+    if (st && st.calendar !== 'granted') await nb.requestCalendar();
+    if (st && st.notifications === false) await nb.requestNotifications();
+    setTimeout(renderEvents, 800);
+  });
+  $('#btn-ev-cal')?.addEventListener('click', async () => { if (nb) await nb.requestCalendar(); setTimeout(renderEvents, 800); });
+  $('#btn-ev-test')?.addEventListener('click', async () => {
+    const r = nev ? await nev.test() : null;
+    toast(r?.ok ? 'Test-Hinweis gesendet – schauen Sie in die Benachrichtigungen.' : 'Test-Hinweis nicht möglich – sind Benachrichtigungen erlaubt?');
+  });
+
   const nbBtn = (id, fn) => $(id)?.addEventListener('click', async () => { await fn(); setTimeout(() => { renderNativeStatus(); renderExact(); }, 800); });
   if (nb) {
     nbBtn('#btn-brief-notif', () => nb.requestNotifications());
@@ -238,7 +281,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     nbBtn('#btn-tools-notif', () => nb.requestNotifications());
     nbBtn('#btn-tools-battery', () => nb.requestIgnoreBattery());
     nbBtn('#btn-tools-appsettings', () => nb.openAppSettings());
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#view-settings').classList.contains('hidden')) { renderNativeStatus(); renderExact(); } });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !$('#view-settings').classList.contains('hidden')) { renderNativeStatus(); renderExact(); renderEvents(); } });
   }
 
   function draftConfig() {
@@ -327,6 +370,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       briefing: readBriefing(),
       evening: readEvening(),
       weekly: readWeekly(),
+      eventReminders: readEvents(),
       memoryToAI: m.ai.checked,
       prefs: { antwortlaenge: m.len.value, anrede: m.anrede.value, humor: m.humor.value }
     });

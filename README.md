@@ -154,6 +154,18 @@ Beim **ersten Öffnen am Abend** (Standard ab 19 Uhr, einstellbar 17–22 Uhr, b
 - Gleiche Schutzregeln wie beim Abend: Daten eingezäunt, keine Werkzeuge, Gedächtnis-Texte nur mit „Gedächtnis an die KI geben“, ohne Schlüssel eine Vorlage.
 - **Android:** mit „Im Hintergrund bereithalten“ meldet Jarvis sonntags beim ersten Entsperren still „Ihr Wochenrückblick ist bereit“ (Kanal der Abendzusammenfassung) und liest auf Wunsch eine Kurzfassung vor. Die Kurzfassung entsteht **ohne Netz** (nur Zahlen, feste Themen und Ihr Kalender) – kein neuer Hintergrund-Job, der Akku-Rahmen (< 0,5 %/Tag) bleibt.
 
+## ⏰ Termin-Hinweise (ab v0.9.4, nur Android-App)
+
+Jarvis meldet sich von selbst etwa **15 Minuten vor einem Termin** aus Ihrem Handy-Kalender (Vorlauf einstellbar: 5, 10, 15, 30 oder 60 Minuten): „Termin in 15 Minuten – „Zahnarzt“ beginnt um 10:30 Uhr.“ Antippen öffnet den Termin im Kalender.
+
+- Einstellungen: „Werkzeuge & Berechtigungen“ → „Termin-Hinweise“ (an/aus, Vorlauf, „Zusätzlich vorlesen“, „Kalender erlauben“, „Test-Hinweis“). Die Statuszeile zeigt den nächsten geplanten Hinweis.
+- Per Sprache: „Terminhinweise aus/an“, „Terminhinweise 30 Minuten vorher“.
+- **Kein Dauer-Dienst:** Jarvis liest den Kalender alle 12 Stunden, bei Kalender-Änderungen, nach Neustart/Update/Zeitzonenwechsel und beim Öffnen der App – und stellt dann **genau einen** Alarm für den nächsten Hinweis. Mit „Wecker & Erinnerungen“ ist der Hinweis minutengenau, sonst ungefähr pünktlich (Android bündelt). Akku-Rahmen < 0,5 %/Tag bleibt.
+- Eigener, **stiller** Kanal „Termin-Hinweise“ (ohne Ton/Vibration, in den Android-Einstellungen änderbar). Auf dem Sperrbildschirm steht nur „Termin in 15 Minuten“, kein Titel.
+- Ganztägige Termine, abgesagte und bereits begonnene Termine lösen keinen Hinweis aus; jeder Termin nur einmal.
+- **Vorlesen** nur, wenn „Zusätzlich vorlesen“ **und** „Im Hintergrund bereithalten“ an sind, zwischen 7 und 22 Uhr und nicht während eines Anrufs; den Titel liest Jarvis nur mit „Termintitel nennen“ (Bereich „Morgen-Briefing & Abend“) vor. In der Benachrichtigung selbst steht der Titel immer (außer auf dem Sperrbildschirm).
+- Keine neue Berechtigung (Kalender, Benachrichtigungen, genaue Alarme und Start nach Neustart gab es schon). Es wird nichts gesendet – alles bleibt auf dem Handy.
+
 ## 🧠 Gedächtnis & Vorlieben (ab v0.8)
 
 - **„Merk dir, dass …“** speichert einen Fakt (max. 200 Zeichen, max. 150 Einträge). „Vergiss das“ nimmt den letzten Eintrag

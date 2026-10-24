@@ -308,6 +308,7 @@ function syncNative() {
     config: settings.briefing,
     evening: settings.evening,
     weekly: settings.weekly,
+    events: settings.eventReminders, // v0.9.4: Termin-Hinweise (nativer Kalender-Scan + Alarm)
     lastWeeklyDay: st.lastWeeklyDay || '',
     week: {
       day: stats.day, chats: wk.chats, activeDays: wk.activeDays, topics: wk.topics, notes: wk.notes, memories: wk.memories,

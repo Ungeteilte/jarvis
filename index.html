@@ -245,7 +245,7 @@
         </div>
       </details>
       <details class="set-group" id="grp-tools">
-        <summary><span class="grp-icon" aria-hidden="true">🧰</span><span class="grp-text"><span class="grp-title">Werkzeuge &amp; Berechtigungen</span><span class="grp-sub">Erinnerungen, genaue Alarme, Akku</span></span></summary>
+        <summary><span class="grp-icon" aria-hidden="true">🧰</span><span class="grp-text"><span class="grp-title">Werkzeuge &amp; Berechtigungen</span><span class="grp-sub">Erinnerungen, Termin-Hinweise, genaue Alarme, Akku</span></span></summary>
         <div class="grp-body">
           <fieldset id="tools-fieldset">
             <legend>Werkzeuge &amp; Berechtigungen</legend>
@@ -258,6 +258,21 @@
             </div>
             <p class="hint native-only">Ohne „Wecker &amp; Erinnerungen“ kommen Erinnerungen ungefähr pünktlich (Android kann sie um einige Minuten verschieben) – Jarvis sagt das beim Stellen dazu.</p>
             <p class="hint web-only">Im Browser erinnert Jarvis nur, solange die Seite offen ist; verpasste Erinnerungen meldet Jarvis beim nächsten Öffnen.</p>
+            <div id="ev-block">
+              <p class="hint"><strong>Termin-Hinweise</strong></p>
+              <p class="hint web-only">Termin-Hinweise gibt es nur in der Android-App (dort liest Jarvis Ihren Handy-Kalender).</p>
+              <div class="native-only">
+                <label class="switch"><input id="set-ev-enabled" type="checkbox"> Vor Terminen von selbst melden</label>
+                <label>Vorlaufzeit <select id="set-ev-lead"></select></label>
+                <label class="switch"><input id="set-ev-speak" type="checkbox"> Zusätzlich vorlesen (nur mit „Im Hintergrund bereithalten“, 7–22 Uhr)</label>
+                <p class="hint">Jarvis schaut regelmäßig in Ihren Handy-Kalender und stellt nur einen Wecker zum nächsten Hinweis – kein Dauerdienst. Ganztägige Termine bleiben still. Die Benachrichtigung ist lautlos (in den Android-Einstellungen änderbar); auf dem Sperrbildschirm erscheint kein Termintitel. Es wird nichts verschickt.</p>
+                <p id="ev-status" class="hint" aria-live="polite"></p>
+                <div class="row wrap">
+                  <button id="btn-ev-cal" type="button" class="btn small">📅 Kalender erlauben</button>
+                  <button id="btn-ev-test" type="button" class="btn small">🔔 Test-Hinweis</button>
+                </div>
+              </div>
+            </div>
             <div class="native-only">
               <p class="hint"><strong>Akku</strong> – damit Briefing und Erinnerungen zuverlässig kommen: Einstellungen → Apps → Jarvis → Akku → „Nicht eingeschränkt“.</p>
               <div class="row wrap">
@@ -313,7 +328,7 @@
       <div class="settings-save">
         <button type="submit" class="btn primary">Speichern</button>
       </div>
-      <p id="app-version" class="hint center">Jarvis 0.9.3</p>
+      <p id="app-version" class="hint center">Jarvis 0.9.4</p>
     </form>
   </section>
 
