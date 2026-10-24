@@ -18,6 +18,16 @@ export function formatClock(ms, timeZone) {
     .replace(/^0(\d)/, '$1');
 }
 
+/** Termine der kommenden 7 Tage → Satz (Wochentag, Uhrzeit, Titel; höchstens 5 genannt). */
+export function weekEventsSentence(events, { timeZone } = {}) {
+  const list = Array.isArray(events) ? events : [];
+  if (!list.length) return 'In den nächsten sieben Tagen stehen keine Termine im Kalender.';
+  const wd = (ms) => new Date(ms).toLocaleDateString('de-DE', { weekday: 'long', timeZone: timeZone || undefined });
+  const items = list.slice(0, 5).map((e) => (e.allDay ? `${wd(e.begin)} ganztägig ${e.title}` : `${wd(e.begin)} ${formatClock(e.begin, timeZone)} Uhr ${e.title}`));
+  return `In den nächsten sieben Tagen haben Sie ${list.length === 1 ? 'einen Termin' : `${countDe(list.length)} Termine`}: ${items.join('; ')}` +
+    (list.length > 5 ? ' und weitere.' : '.');
+}
+
 /** Termine → Satz. titles=false nennt nur Anzahl und erste Uhrzeit. */
 export function eventsSentence(events, { titles = true, day = 'heute', timeZone } = {}) {
   const list = Array.isArray(events) ? events : [];
@@ -114,32 +124,34 @@ export const BRIEFING_TOOLS = [
     risk: 'lesen',
     sourceLabel: 'Terminen',
     externalData: true, // fremde Texte im Ergebnis → danach kein propose_memory in dieser Runde
-    description: 'Liest die Termine von heute oder morgen aus dem Kalender des Handys (nur Android-App).',
+    description: 'Liest die Termine von heute, morgen oder der kommenden Woche (die nächsten 7 Tage ab morgen) aus dem Kalender des Handys (nur Android-App).',
     userHint: 'Termine („Welche Termine habe ich heute?“, nur App)',
     readOnly: true,
-    parameters: obj({ day: { type: 'string', enum: ['heute', 'morgen'], description: 'heute (Standard) oder morgen' } }),
+    parameters: obj({ day: { type: 'string', enum: ['heute', 'morgen', 'woche'], description: 'heute (Standard), morgen oder woche (nächste 7 Tage)' } }),
     localTriggers: [
       { re: /^(?:welche\s+termine|was\s+steht\s+(?:heute\s+|morgen\s+)?im\s+kalender|meine\s+termine|habe?\s+ich\s+(?:heute\s+|morgen\s+)?(?:noch\s+)?(?:einen\s+|irgendwelche\s+)?termine?)\b.{0,30}$/i,
-        parse: (m, raw) => ({ day: /morgen/i.test(raw) ? 'morgen' : 'heute' }) }
+        parse: (m, raw) => ({ day: /woche/i.test(raw) ? 'woche' : /morgen/i.test(raw) ? 'morgen' : 'heute' }) }
     ],
     async execute({ day = 'heute' } = {}, ctx) {
       if (!ctx.device?.getCalendarEvents) {
         return { ok: false, unsupported: true, message: 'Termine aus dem Kalender gibt es nur in der Android-App.' };
       }
       let r;
-      try { r = await ctx.device.getCalendarEvents({ dayOffset: day === 'morgen' ? 1 : 0, interactive: ctx.interactive !== false }); } catch (e) { r = { ok: false, message: e.message }; }
+      const week = day === 'woche';
+      try { r = await ctx.device.getCalendarEvents({ dayOffset: week || day === 'morgen' ? 1 : 0, days: week ? 7 : 1, interactive: ctx.interactive !== false }); } catch (e) { r = { ok: false, message: e.message }; }
       if (!r?.ok) {
         return { ok: false, message: r?.permission === 'denied' || r?.permission === 'prompt'
           ? 'Für Ihre Termine bräuchte ich Zugriff auf den Kalender.' : 'Der Kalender ist gerade nicht lesbar.', data: { reason: r?.permission || 'error' } };
       }
-      const events = (r.events || []).slice(0, 12).map((e) => ({
+      const events = (r.events || []).slice(0, week ? 20 : 12).map((e) => ({
         title: cleanText(e.title, 120) || 'Termin',
         location: cleanText(e.location, 60),
         begin: Number(e.begin) || 0,
         end: Number(e.end) || 0,
         allDay: Boolean(e.allDay)
       }));
-      return { ok: true, message: eventsSentence(events, { titles: true, day, timeZone: ctx.timeZone }), data: { events, day } };
+      const message = week ? weekEventsSentence(events, { timeZone: ctx.timeZone }) : eventsSentence(events, { titles: true, day, timeZone: ctx.timeZone });
+      return { ok: true, message, data: { events, day } };
     }
   }
 ];

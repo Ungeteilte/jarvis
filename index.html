@@ -192,6 +192,15 @@
             <p class="hint native-only">Hintergrund und Vorlesen richten sich nach den Schaltern beim Morgen-Briefing.</p>
             <button id="btn-eve-test" type="button" class="btn">▶ Jetzt testen</button>
           </fieldset>
+          <fieldset id="weekly-fieldset">
+            <legend>Wochenrückblick</legend>
+            <label class="switch"><input id="set-week-enabled" type="checkbox"> Sonntags: Höhepunkte der Woche und Ausblick auf die neue Woche</label>
+            <label>Sonntags ab
+              <select id="set-week-hour"></select>
+            </label>
+            <p class="hint">Einmal pro Sonntag beim ersten Öffnen ab dieser Uhrzeit (bis 23 Uhr). Sonntags ersetzt er die Abendzusammenfassung. „Wie war meine Woche?“ oder „Wochenrückblick“ geht jederzeit; „Wochenrückblick aus“ schaltet ihn ab. Inhalte wie bei der Abendzusammenfassung, dazu neu Gemerktes und erledigte bzw. geplante Erinnerungen.</p>
+            <button id="btn-week-test" type="button" class="btn">▶ Jetzt testen</button>
+          </fieldset>
         </div>
       </details>
       <details class="set-group" id="grp-memory">
@@ -260,11 +269,11 @@
         </div>
       </details>
       <details class="set-group" id="grp-notif">
-        <summary><span class="grp-icon" aria-hidden="true">🔔</span><span class="grp-text"><span class="grp-title">Benachrichtigungen lesen</span><span class="grp-sub">kommt in v0.9.1</span></span></summary>
+        <summary><span class="grp-icon" aria-hidden="true">🔔</span><span class="grp-text"><span class="grp-title">Benachrichtigungen lesen</span><span class="grp-sub">kommt in einer späteren Version</span></span></summary>
         <div class="grp-body">
           <fieldset id="notif-fieldset" class="coming-soon" disabled aria-disabled="true">
             <legend>Benachrichtigungen lesen</legend>
-            <p class="hint soon-note">🚧 Kommt in v0.9.1 – hier noch ohne Funktion. Jarvis liest in dieser Version keine Benachrichtigungen.</p>
+            <p class="hint soon-note">🚧 Kommt in einer späteren Version – hier noch ohne Funktion. Jarvis liest in dieser Version keine Benachrichtigungen.</p>
             <label class="switch"><input id="set-notif-ai" type="checkbox" disabled> Benachrichtigungen an die KI senden</label>
             <p class="hint">Erlaubte Apps (nur diese würde Jarvis lesen):</p>
             <div id="notif-apps" class="ressorts">
@@ -304,7 +313,7 @@
       <div class="settings-save">
         <button type="submit" class="btn primary">Speichern</button>
       </div>
-      <p id="app-version" class="hint center">Jarvis 0.9</p>
+      <p id="app-version" class="hint center">Jarvis 0.9.3</p>
     </form>
   </section>
 

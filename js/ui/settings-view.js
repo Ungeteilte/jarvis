@@ -7,9 +7,9 @@ import { loadNotes } from '../core/skills.js';
 import { loadMemory, addMemory, updateMemory, removeMemory, clearMemory, migrateNotes, exportMemory, importMemory, KATEGORIE_LABELS } from '../core/memory.js';
 import { PREF_OPTIONS, PREF_LABELS } from '../core/prefs.js';
 import { LISTEN_GUIDE } from '../core/listen-launch.js';
-import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig } from '../core/briefing/index.js';
+import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig, WEEKLY_HOUR_OPTIONS, normalizeWeeklyConfig } from '../core/briefing/index.js';
 
-export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing, onTestEvening }) {
+export function createSettingsView({ store, tts, device = null, onSaved, onClearChat, onTestBriefing, onTestEvening, onTestWeekly }) {
   const f = {
     provider: $('#set-provider'), baseurl: $('#set-baseurl'), rowBase: $('#row-baseurl'),
     apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
@@ -102,6 +102,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     fillMemory(draft);
     fillBriefing(draft.briefing);
     fillEvening(draft.evening);
+    fillWeekly(draft.weekly);
     renderExact();
     refreshVoices();
   }
@@ -211,6 +212,21 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     saveSettings(store, { evening: readEvening() });
     onTestEvening?.();
   });
+  // ---------- Wochenrückblick (v0.9.3) ----------
+  const wk = { enabled: $('#set-week-enabled'), hour: $('#set-week-hour') };
+  wk.hour.replaceChildren(...WEEKLY_HOUR_OPTIONS.map((h) => new Option(`${h}:00 Uhr`, String(h))));
+  function fillWeekly(cfg) {
+    wk.enabled.checked = cfg.enabled;
+    wk.hour.value = String(cfg.hour);
+  }
+  function readWeekly() {
+    return normalizeWeeklyConfig({ enabled: wk.enabled.checked, hour: Number(wk.hour.value) });
+  }
+  $('#btn-week-test').addEventListener('click', () => {
+    stashProvider();
+    saveSettings(store, { evening: readEvening(), weekly: readWeekly() });
+    onTestWeekly?.();
+  });
 
   const nbBtn = (id, fn) => $(id)?.addEventListener('click', async () => { await fn(); setTimeout(() => { renderNativeStatus(); renderExact(); }, 800); });
   if (nb) {
@@ -310,6 +326,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       listenOnOpen: f.listenOpen.checked,
       briefing: readBriefing(),
       evening: readEvening(),
+      weekly: readWeekly(),
       memoryToAI: m.ai.checked,
       prefs: { antwortlaenge: m.len.value, anrede: m.anrede.value, humor: m.humor.value }
     });
