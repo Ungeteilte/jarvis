@@ -23,6 +23,11 @@ public class BriefingPrefetchWorker extends Worker {
         int h = BriefingRules.hourOf(now, TimeZone.getDefault());
         if (BriefingLaunch.KIND_EVENING.equals(getInputData().getString(KEY_KIND))) {
             if (!BriefingState.eveningEnabled(c) || h < BriefingState.eveningStartHour(c) - 3 || h >= BriefingRules.NIGHT_LOCK_HOUR) return Result.success();
+            // Sonntags ersetzt der Wochenrückblick den Abend – der braucht kein Netz, also nichts vorladen
+            if (BriefingRules.weeklyReplacesEvening(now, TimeZone.getDefault(), BriefingState.weeklyEnabled(c))) {
+                if (!BriefingService.isRunning()) BriefingService.start(c, false);
+                return Result.success();
+            }
             boolean ok = true;
             if (BriefingState.eveningContent(c, "weather") && BriefingState.coords(c, now) != null) ok = BriefingFetcher.weatherTomorrow(c, now, 15000) != null;
             if (BriefingState.eveningContent(c, "news")) ok &= BriefingFetcher.news(c, 15000) != null;

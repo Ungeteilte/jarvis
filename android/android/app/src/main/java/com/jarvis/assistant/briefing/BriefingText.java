@@ -340,5 +340,68 @@ public final class BriefingText {
         return sb.toString().replaceAll("\\s+", " ").replace("..", ".").trim();
     }
 
+    // ---------- Wochenrückblick (v0.9.3) ----------
+    public static final class WeekStats {
+        public final int chats, activeDays, notes, memories, remindersDone, timers, nextReminders; public final List<String> topics;
+        public WeekStats(int chats, int activeDays, List<String> topics, int notes, int memories, int remindersDone, int timers, int nextReminders) {
+            this.chats = Math.max(0, chats); this.activeDays = Math.max(0, Math.min(7, activeDays)); this.notes = Math.max(0, notes);
+            this.memories = Math.max(0, memories); this.remindersDone = Math.max(0, remindersDone); this.timers = Math.max(0, timers);
+            this.nextReminders = Math.max(0, nextReminders);
+            List<String> t = new ArrayList<>();
+            if (topics != null) for (String s : topics) if (s != null && TOPICS.contains(s) && !t.contains(s) && t.size() < 3) t.add(s);
+            this.topics = t;
+        }
+    }
+
+    public static final String WEEKLY_OFFER = "Soll ich Ihnen für die neue Woche eine Erinnerung stellen oder mir etwas merken? Öffnen Sie dazu einfach Jarvis.";
+    private static final String[] NUM_N = {"keine", "eine", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"};
+    private static String nf(int n) { return n < NUM_N.length ? NUM_N[n] : String.valueOf(n); }
+    private static String nm(int n) { return n < NUM.length ? NUM[n] : String.valueOf(n); }
+
+    /**
+     * Kurzer Wochenrückblick für Benachrichtigung und Vorlesen (ohne KI, ohne Netz).
+     * stats=null: keine Zahlen von der App; events=null: Kalender nicht verfügbar/aus (nächste 7 Tage ab morgen).
+     * titles=false: Termine nur mit Anzahl und erstem Termin (Wochentag + Uhrzeit).
+     */
+    public static String composeWeekly(long nowMs, TimeZone tz, WeekStats stats, List<Event> events, boolean titles) {
+        StringBuilder sb = new StringBuilder("Guten Abend, hier ist Ihr Wochenrückblick. ");
+        if (stats != null) {
+            if (stats.chats == 0) sb.append("Diese Woche haben wir nicht miteinander gesprochen. ");
+            else {
+                sb.append("Diese Woche haben Sie mich ").append(stats.chats < TIMES.length ? TIMES[stats.chats] : stats.chats + "-mal").append(" gefragt");
+                if (stats.activeDays > 1) sb.append(", an ").append(nf(stats.activeDays)).append(" Tagen");
+                if (!stats.topics.isEmpty()) sb.append(", vor allem zu ").append(joinDe(stats.topics));
+                sb.append(". ");
+            }
+            List<String> extra = new ArrayList<>();
+            if (stats.notes > 0) extra.add(stats.notes == 1 ? "eine neue Notiz" : nm(stats.notes) + " neue Notizen");
+            if (stats.memories > 0) extra.add(stats.memories == 1 ? "ein neu gemerkter Eintrag" : nm(stats.memories) + " neu gemerkte Einträge");
+            if (stats.remindersDone > 0) extra.add(stats.remindersDone == 1 ? "eine erledigte Erinnerung" : nm(stats.remindersDone) + " erledigte Erinnerungen");
+            if (stats.timers > 0) extra.add(stats.timers == 1 ? "ein abgelaufener Timer" : nm(stats.timers) + " abgelaufene Timer");
+            if (!extra.isEmpty()) sb.append("Höhepunkte: ").append(joinDe(extra)).append(". ");
+        }
+        sb.append(weekAheadSentence(tz, events, titles));
+        if (stats != null && stats.nextReminders > 0) {
+            sb.append(stats.nextReminders == 1 ? "Außerdem ist eine Erinnerung geplant. " : "Außerdem sind " + nm(stats.nextReminders) + " Erinnerungen geplant. ");
+        }
+        sb.append(WEEKLY_OFFER);
+        return sb.toString().replaceAll("\\s+", " ").replace("..", ".").trim();
+    }
+
+    /** „In der neuen Woche haben Sie fünf Termine, den ersten am Montag um 9:00 Uhr.“ (events=null → leer). */
+    public static String weekAheadSentence(TimeZone tz, List<Event> events, boolean titles) {
+        if (events == null) return "";
+        if (events.isEmpty()) return "In der neuen Woche stehen keine Termine im Kalender. ";
+        int n = events.size();
+        Event first = events.get(0);
+        SimpleDateFormat wd = new SimpleDateFormat("EEEE", Locale.GERMANY);
+        wd.setTimeZone(first.allDay ? TimeZone.getTimeZone("UTC") : tz);
+        StringBuilder sb = new StringBuilder("In der neuen Woche haben Sie ").append(n == 1 ? "einen Termin" : nm(n) + " Termine");
+        sb.append(n == 1 ? ", am " : ", den ersten am ").append(wd.format(new Date(first.begin)));
+        if (!first.allDay) sb.append(" um ").append(clock(first.begin, tz)).append(" Uhr");
+        if (titles && !first.title.isEmpty()) sb.append(": ").append(first.title);
+        return sb.append(". ").toString();
+    }
+
     private static String stripEnd(String t) { return t.replaceAll("[.!?…]+$", ""); }
 }

@@ -998,7 +998,8 @@ public class JarvisNativePlugin extends Plugin {
 
     private void resolveCalendar(PluginCall call) {
         int day = Math.max(0, Math.min(1, call.getInt("dayOffset", 0)));
-        List<CalendarReader.Item> items = CalendarReader.read(getContext(), day, System.currentTimeMillis());
+        int days = Math.max(1, Math.min(7, call.getInt("days", 1))); // 7 = Wochenausblick (v0.9.3)
+        List<CalendarReader.Item> items = CalendarReader.read(getContext(), day, days, System.currentTimeMillis());
         JSObject r = new JSObject();
         if (items == null) { r.put("ok", false); r.put("permission", "denied"); call.resolve(r); return; }
         JSArray arr = new JSArray();

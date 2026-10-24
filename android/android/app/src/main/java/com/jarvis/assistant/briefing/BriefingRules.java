@@ -68,6 +68,46 @@ public final class BriefingRules {
         return new Decision(true, "evening", day);
     }
     public static int clampLatest(int h) { return Math.max(8, Math.min(23, h)); }
+    public static int clampWeeklyHour(int h) { return Math.max(9, Math.min(21, h)); }
+
+    /** Ist der Tages-Schlüssel „2026-10-25“ ein Sonntag? (Kalender-Datum, ohne Zeitzone.) */
+    public static boolean isSundayKey(String day) {
+        try {
+            String[] p = day.split("-");
+            Calendar c = Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.ROOT);
+            c.clear();
+            c.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]));
+            return c.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY;
+        } catch (Exception e) { return false; }
+    }
+
+    /** Sonntags ersetzt der Wochenrückblick (wenn an) die Abendzusammenfassung. */
+    public static boolean weeklyReplacesEvening(long nowMs, TimeZone tz, boolean weeklyEnabled) {
+        return weeklyEnabled && isSundayKey(dayKey(nowMs, tz));
+    }
+
+    /**
+     * Wochenrückblick – Spiegel von shouldWeekly in js/core/briefing/weekly.js
+     * (gemeinsame Fälle: src/test/resources/weekly-rules.json).
+     * Nur sonntags, Fenster hour … 23:00, einmal pro Sonntag, nicht beim allerersten Start,
+     * nicht in der ersten Stunde nach einem Morgen-Briefing.
+     */
+    public static Decision decideWeekly(long nowMs, TimeZone tz, long lastActivityMs, long lastBriefingAtMs,
+                                        String lastWeeklyDay, boolean enabled, boolean onboarded, int hour) {
+        String day = dayKey(nowMs, tz);
+        if (!enabled) return new Decision(false, "disabled", day);
+        if (!onboarded) return new Decision(false, "onboarding", day);
+        if (!isSundayKey(day)) return new Decision(false, "not-sunday", day);
+        if (day.equals(lastWeeklyDay)) return new Decision(false, "already", day);
+        int h = hourOf(nowMs, tz);
+        if (h >= NIGHT_LOCK_HOUR || h < DAY_START_HOUR) return new Decision(false, "night", day);
+        if (h < clampWeeklyHour(hour)) return new Decision(false, "early", day);
+        if (lastActivityMs <= 0) return new Decision(false, "first-start", day);
+        if (nowMs - lastActivityMs < 0) return new Decision(false, "clock", day);
+        long sinceBriefing = nowMs - lastBriefingAtMs;
+        if (lastBriefingAtMs > 0 && sinceBriefing >= 0 && sinceBriefing < EVENING_AFTER_BRIEFING_MS) return new Decision(false, "recent-briefing", day);
+        return new Decision(true, "weekly", day);
+    }
 
     /**
      * @param lastActivityMs letzte Aktivität vor der aktuellen Sitzung (0 = unbekannt)

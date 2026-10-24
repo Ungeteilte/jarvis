@@ -71,8 +71,36 @@ public final class BriefingState {
         JSONObject ct = eveningConfig(c).optJSONObject("content");
         return ct == null || ct.optBoolean(key, true);
     }
-    /** Morgen-Briefing oder Abendzusammenfassung an? (Dann darf der Hintergrund-Dienst laufen.) */
-    public static boolean anyEnabled(Context c) { return enabled(c) || eveningEnabled(c); }
+    // ---------- Wochenrückblick (v0.9.3) ----------
+    public static JSONObject weeklyConfig(Context c) {
+        JSONObject o = sync(c).optJSONObject("weekly");
+        return o == null ? new JSONObject() : o;
+    }
+    public static boolean weeklyEnabled(Context c) { return weeklyConfig(c).optBoolean("enabled", true); }
+    public static int weeklyHour(Context c) { return BriefingRules.clampWeeklyHour(weeklyConfig(c).optInt("hour", 18)); }
+    public static String lastWeeklyDay(Context c) {
+        String js = sync(c).optString("lastWeeklyDay", "");
+        String bg = prefs(c).getString("bgWeeklyDay", "");
+        return js.compareTo(bg) >= 0 ? js : bg;
+    }
+    public static void markWeekly(Context c, String day, boolean spoken) {
+        prefs(c).edit().putString("bgWeeklyDay", day).putBoolean("bgWeeklySpoken", spoken).apply();
+    }
+    public static void markWeeklySpoken(Context c) { prefs(c).edit().putBoolean("bgWeeklySpoken", true).apply(); }
+
+    /** Zahlen der Woche aus der App (nur Anzahl + feste Themen-Etiketten, gilt für den gemeldeten Tag), sonst null. */
+    public static BriefingText.WeekStats weekStats(Context c, String day) {
+        JSONObject t = sync(c).optJSONObject("week");
+        if (t == null || !day.equals(t.optString("day", ""))) return null;
+        List<String> topics = new ArrayList<>();
+        JSONArray a = t.optJSONArray("topics");
+        if (a != null) for (int i = 0; i < a.length() && topics.size() < 4; i++) topics.add(a.optString(i));
+        return new BriefingText.WeekStats(t.optInt("chats", 0), t.optInt("activeDays", 0), topics, t.optInt("notes", 0),
+            t.optInt("memories", 0), t.optInt("remindersDone", 0), t.optInt("timers", 0), t.optInt("nextReminders", 0));
+    }
+
+    /** Morgen-Briefing, Abendzusammenfassung oder Wochenrückblick an? (Dann darf der Hintergrund-Dienst laufen.) */
+    public static boolean anyEnabled(Context c) { return enabled(c) || eveningEnabled(c) || weeklyEnabled(c); }
 
     /** Heutige Zahlen aus der App (nur Anzahl + feste Themen-Etiketten), sonst null. */
     public static BriefingText.DayStats todayStats(Context c, String day) {
@@ -241,6 +269,8 @@ public final class BriefingState {
             o.put("bgSpoken", p.getBoolean("bgSpoken", false));
             o.put("bgEveningDay", p.getString("bgEveningDay", ""));
             o.put("bgEveningSpoken", p.getBoolean("bgEveningSpoken", false));
+            o.put("bgWeeklyDay", p.getString("bgWeeklyDay", ""));
+            o.put("bgWeeklySpoken", p.getBoolean("bgWeeklySpoken", false));
             o.put("backgroundEnabled", backgroundEnabled(c));
             o.put("bgOffByNotification", offByNotification(c));
         } catch (Exception ignored) {}

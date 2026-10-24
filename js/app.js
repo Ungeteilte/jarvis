@@ -19,8 +19,10 @@ import { createWebDevice } from './adapters/web-device.js';
 import { waitForBoot, adapterKind } from './core/boot.js';
 import {
   shouldBrief, recordActivity, mergeNativeState, loadBriefingState, saveBriefingState, dayKey, localParts, NIGHT_LOCK_HOUR, DAY_START_HOUR,
-  shouldEvening, recordTimerFired, todayStats
+  shouldEvening, recordTimerFired, todayStats, shouldWeekly, weeklyReplacesEvening, weekStats, upcomingReminders
 } from './core/briefing/index.js';
+import { loadMemory } from './core/memory.js';
+import { loadReminders } from './core/reminders.js';
 
 // Native Capacitor-App setzt window.__JARVIS_ADAPTERS__ im Bootstrap – erst darauf warten
 // (höchstens 3 s, dann Web-Adapter), sonst gewinnt dieses Modul das Rennen.
@@ -297,9 +299,20 @@ function syncNative() {
   const st = loadBriefingState(store);
   // Für den Tagesrückblick im Hintergrund nur Zahlen und feste Themen-Etiketten – keine Texte
   const stats = todayStats({ history: assistant.getHistory(), notes: loadNotes(store), firedTimers: st.firedTimers || [], nowMs: Date.now() });
+  // Wochenrückblick im Hintergrund: ebenfalls nur Zahlen und Etiketten (keine Notiz-/Gedächtnis-Texte)
+  const wk = weekStats({
+    history: assistant.getHistory().filter((m) => m.source !== 'briefing'), notes: loadNotes(store), memory: loadMemory(store).items,
+    reminders: loadReminders(store), firedTimers: st.firedTimers || [], nowMs: Date.now(), memoryTexts: false
+  });
   return nativeBriefing.sync({
     config: settings.briefing,
     evening: settings.evening,
+    weekly: settings.weekly,
+    lastWeeklyDay: st.lastWeeklyDay || '',
+    week: {
+      day: stats.day, chats: wk.chats, activeDays: wk.activeDays, topics: wk.topics, notes: wk.notes, memories: wk.memories,
+      remindersDone: wk.remindersDone, timers: wk.timers, nextReminders: upcomingReminders(loadReminders(store), Date.now()).length
+    },
     lastActiveAt: st.lastActiveAt || 0,
     lastBriefingDay: st.lastBriefingDay || '',
     lastEveningDay: st.lastEveningDay || '',
@@ -314,7 +327,7 @@ function syncNative() {
 
 /** Tages-Anspruch sichern (mehrere Tabs: Web-Locks; sonst einfache Prüfung). */
 async function claimBriefingDay(day, kind = 'morning') {
-  const key = kind === 'evening' ? 'lastEveningDay' : 'lastBriefingDay';
+  const key = kind === 'weekly' ? 'lastWeeklyDay' : kind === 'evening' ? 'lastEveningDay' : 'lastBriefingDay';
   const claim = () => {
     if (loadBriefingState(store)[key] === day) return false;
     saveBriefingState(store, { [key]: day });
@@ -329,18 +342,19 @@ async function claimBriefingDay(day, kind = 'morning') {
 /** Briefing starten – im Browser ohne vorherige Geste erst per Tipp-Karte (Autoplay-Sperre). */
 const DEFAULT_CARDS = {
   morning: { id: 'briefing-card', title: '☀️ Guten Morgen – Ihr Briefing ist bereit', detail: 'Tippen zum Starten (Wetter, Termine, Nachrichten).', button: '▶ Briefing starten' },
-  evening: { id: 'evening-card', title: '🌙 Guten Abend – Ihr Tagesrückblick ist bereit', detail: 'Tippen zum Starten (Ihr Tag, Ausblick auf morgen).', button: '▶ Rückblick starten' }
+  evening: { id: 'evening-card', title: '🌙 Guten Abend – Ihr Tagesrückblick ist bereit', detail: 'Tippen zum Starten (Ihr Tag, Ausblick auf morgen).', button: '▶ Rückblick starten' },
+  weekly: { id: 'weekly-card', title: '🗓️ Ihr Wochenrückblick ist bereit', detail: 'Tippen zum Starten (Höhepunkte der Woche, Ausblick auf die neue Woche).', button: '▶ Wochenrückblick starten' }
 };
 
 function startBriefing({ auto = true, card = null, kind = 'morning' } = {}) {
-  const evening = kind === 'evening';
-  const run = () => runTurn((onDelta) => assistant.brief({ onDelta, auto, kind: evening ? 'evening' : 'morning' }),
-    { status: evening ? 'Ich stelle Ihren Tagesrückblick zusammen …' : 'Ich stelle Ihr Briefing zusammen …' })
+  const k = kind === 'weekly' || kind === 'evening' ? kind : 'morning';
+  const STATUS = { weekly: 'Ich stelle Ihren Wochenrückblick zusammen …', evening: 'Ich stelle Ihren Tagesrückblick zusammen …', morning: 'Ich stelle Ihr Briefing zusammen …' };
+  const run = () => runTurn((onDelta) => assistant.brief({ onDelta, auto, kind: k }), { status: STATUS[k] })
     .then(() => syncNative());
   const needsGesture = !globalThis.__JARVIS_NATIVE__ && settings.speak && tts.isSupported()
     && globalThis.navigator?.userActivation && !navigator.userActivation.hasBeenActive;
   if (card || needsGesture) {
-    view.addStartCard(card || DEFAULT_CARDS[evening ? 'evening' : 'morning'], run);
+    view.addStartCard(card || DEFAULT_CARDS[k], run);
     return;
   }
   run();
@@ -358,7 +372,7 @@ async function maybeAutoBriefing() {
   try {
     settings = loadSettings(store);
     const cfg = settings.briefing;
-    if ((!cfg.enabled && !settings.evening.enabled) || !persona.onboarded || busy) return;
+    if ((!cfg.enabled && !settings.evening.enabled && !settings.weekly.enabled) || !persona.onboarded || busy) return;
     // „Jarvis fragen“ hat Vorrang: wer gerade fragen will, bekommt kein Briefing dazwischen (kommt beim nächsten Öffnen)
     if (listening || Date.now() - listenRequestedAt < 5000) return;
     const nowMs = Date.now();
@@ -393,6 +407,8 @@ async function maybeAutoBriefing() {
 
 /** Abends: erster Besuch im Fenster (Start … 23 Uhr) → Tagesrückblick, einmal pro Tag. */
 async function maybeEvening(nowMs, today, state, native) {
+  // Sonntags (Wochenrückblick an): der Wochenrückblick ersetzt die Abendzusammenfassung
+  if (weeklyReplacesEvening({ nowMs, cfg: settings.weekly })) { await maybeWeekly(nowMs, today, state, native); return; }
   const ecfg = settings.evening;
   if (!ecfg.enabled) return;
   const st = { ...state, lastEveningDay: state.lastEveningDay || '' };
@@ -402,6 +418,16 @@ async function maybeEvening(nowMs, today, state, native) {
   if (native?.bgEveningDay === today && native.bgEveningSpoken) {
     startBriefing({ kind: 'evening', card: { id: 'evening-card', title: 'Ausführlicher Tagesrückblick?', detail: 'Die Kurzfassung habe ich Ihnen vorhin schon vorgelesen.', button: '▶ Ausführlich' } });
   } else startBriefing({ kind: 'evening' });
+}
+
+/** Sonntags: erster Besuch ab der eingestellten Uhrzeit (bis 23 Uhr) → Wochenrückblick, einmal pro Sonntag. */
+async function maybeWeekly(nowMs, today, state, native) {
+  const d = shouldWeekly({ nowMs, state: { ...state, lastWeeklyDay: state.lastWeeklyDay || '' }, cfg: settings.weekly, onboarded: persona.onboarded });
+  if (!d.ok) return;
+  if (!(await claimBriefingDay(d.day, 'weekly'))) return;
+  if (native?.bgWeeklyDay === today && native.bgWeeklySpoken) {
+    startBriefing({ kind: 'weekly', card: { id: 'weekly-card', title: 'Ausführlicher Wochenrückblick?', detail: 'Die Kurzfassung habe ich Ihnen vorhin schon vorgelesen.', button: '▶ Ausführlich' } });
+  } else startBriefing({ kind: 'weekly' });
 }
 
 /** „Ausschalten“ in der Dauer-Benachrichtigung → Einstellung übernehmen (statt sie wieder einzuschalten). */
@@ -416,13 +442,15 @@ function applyNativeBackgroundOff(native) {
 /** Start aus der Benachrichtigung „Guten Morgen – Ihr Briefing ist bereit“ (Android). */
 function onNativeLaunch(r) {
   if (!r?.requested) return;
-  const kind = r.kind === 'evening' ? 'evening' : 'morning';
+  const kind = r.kind === 'evening' || r.kind === 'weekly' ? r.kind : 'morning';
   const st = loadBriefingState(store);
-  const last = (kind === 'evening' ? st.lastEveningAt : st.lastBriefingAt) || 0;
+  const last = (kind === 'weekly' ? st.lastWeeklyAt : kind === 'evening' ? st.lastEveningAt : st.lastBriefingAt) || 0;
   if (busy || Date.now() - last < 2 * 60000) return; // läuft schon / gerade erst
   touchActivity();
   if (kind === 'evening') saveBriefingState(store, { lastEveningDay: dayKey(Date.now()) });
+  if (kind === 'weekly') saveBriefingState(store, { lastWeeklyDay: dayKey(Date.now()) });
   if (r.trusted) startBriefing({ auto: true, kind });
+  else if (kind === 'weekly') startBriefing({ kind, card: { id: 'weekly-card', title: 'Wochenrückblick starten?', detail: 'Möchten Sie jetzt Ihren Wochenrückblick hören?', button: '▶ Wochenrückblick starten' } });
   else if (kind === 'evening') startBriefing({ kind, card: { id: 'evening-card', title: 'Tagesrückblick starten?', detail: 'Möchten Sie jetzt Ihren Tagesrückblick hören?', button: '▶ Rückblick starten' } });
   else startBriefing({ card: { id: 'briefing-card', title: 'Briefing starten?', detail: 'Möchten Sie jetzt Ihr Morgen-Briefing hören?', button: '▶ Briefing starten' } });
 }
@@ -516,7 +544,7 @@ const settingsView = createSettingsView({
     setWake(s.wakeWord);
     showSettings(false);
     if (nativeBriefing) {
-      Promise.resolve(syncNative()).then(() => nativeBriefing.setBackground(s.briefing.background && (s.briefing.enabled || s.evening.enabled)));
+      Promise.resolve(syncNative()).then(() => nativeBriefing.setBackground(s.briefing.background && (s.briefing.enabled || s.evening.enabled || s.weekly.enabled)));
     }
   },
   onTestBriefing: () => {
@@ -528,6 +556,11 @@ const settingsView = createSettingsView({
     settings = loadSettings(store);
     showSettings(false);
     startBriefing({ auto: false, kind: 'evening' });
+  },
+  onTestWeekly: () => {
+    settings = loadSettings(store);
+    showSettings(false);
+    startBriefing({ auto: false, kind: 'weekly' });
   },
   onClearChat: () => { assistant.clearHistory(); view.renderHistory([]); }
 });
@@ -627,7 +660,7 @@ function init() {
     await syncNative();
     if (nativeBriefing) {
       applyNativeBackgroundOff(await nativeBriefing.getState());
-      if ((settings.briefing.enabled || settings.evening.enabled) && settings.briefing.background) nativeBriefing.setBackground(true);
+      if ((settings.briefing.enabled || settings.evening.enabled || settings.weekly.enabled) && settings.briefing.background) nativeBriefing.setBackground(true);
     }
   })();
   globalThis.__JARVIS_BRIEFING__ = { check: maybeAutoBriefing, start: (o) => startBriefing(o) };

@@ -16,6 +16,7 @@ public final class BriefingLaunch {
     public static final String EXTRA_KIND = "kind";
     public static final String KIND_MORNING = "morning";
     public static final String KIND_EVENING = "evening";
+    public static final String KIND_WEEKLY = "weekly";
 
     public interface Listener { void onLaunch(); }
 
@@ -33,7 +34,7 @@ public final class BriefingLaunch {
         try { nonce = intent.getStringExtra(EXTRA_NONCE); } catch (Exception ignored) {}
         String k = null;
         try { k = intent.getStringExtra(EXTRA_KIND); } catch (Exception ignored) {}
-        kind = KIND_EVENING.equals(k) ? KIND_EVENING : KIND_MORNING; // nur bekannte Werte
+        kind = KIND_EVENING.equals(k) ? KIND_EVENING : KIND_WEEKLY.equals(k) ? KIND_WEEKLY : KIND_MORNING; // nur bekannte Werte
         trusted = BriefingState.consumeNonce(c, nonce);
         pending = true;
         Listener l = listener;
@@ -49,6 +50,6 @@ public final class BriefingLaunch {
         return r;
     }
 
-    /** Art des letzten Starts (morning|evening) – vor consume() abfragen. */
+    /** Art des letzten Starts (morning|evening|weekly) – vor consume() abfragen. */
     public static String kind() { return kind; }
 }

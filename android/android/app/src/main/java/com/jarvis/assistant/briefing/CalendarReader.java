@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 
-/** Termine eines Tages aus dem Gerätekalender (READ_CALENDAR, nur lesend). */
+/** Termine eines Tages (oder mehrerer Tage, Wochenrückblick) aus dem Gerätekalender (READ_CALENDAR, nur lesend). */
 public final class CalendarReader {
     private CalendarReader() {}
 
@@ -33,8 +33,12 @@ public final class CalendarReader {
     }
 
     /** dayOffset 0 = heute, 1 = morgen (Ortszeit). Ohne Erlaubnis → null. */
-    public static List<Item> read(Context c, int dayOffset, long nowMs) {
+    public static List<Item> read(Context c, int dayOffset, long nowMs) { return read(c, dayOffset, 1, nowMs); }
+
+    /** days aufeinanderfolgende Tage ab dayOffset (1…7), höchstens 20 Termine. Ohne Erlaubnis → null. */
+    public static List<Item> read(Context c, int dayOffset, int days, long nowMs) {
         if (!granted(c)) return null;
+        int span = Math.max(1, Math.min(7, days));
         TimeZone tz = TimeZone.getDefault();
         Calendar cal = Calendar.getInstance(tz, Locale.ROOT);
         cal.setTimeInMillis(nowMs);
@@ -42,6 +46,8 @@ public final class CalendarReader {
         cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0);
         long start = cal.getTimeInMillis();
         String dayUtc = String.format(Locale.ROOT, "%04d-%02d-%02d", cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
+        cal.add(Calendar.DATE, span - 1);
+        String lastDayUtc = String.format(Locale.ROOT, "%04d-%02d-%02d", cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
         cal.add(Calendar.DATE, 1);
         long end = cal.getTimeInMillis();
 
@@ -66,7 +72,7 @@ public final class CalendarReader {
                 if (allDay) {
                     utc.setTimeInMillis(bgn);
                     String d = String.format(Locale.ROOT, "%04d-%02d-%02d", utc.get(Calendar.YEAR), utc.get(Calendar.MONTH) + 1, utc.get(Calendar.DAY_OF_MONTH));
-                    if (!d.equals(dayUtc)) continue;
+                    if (d.compareTo(dayUtc) < 0 || d.compareTo(lastDayUtc) > 0) continue;
                 } else if (!(bgn < end && Math.max(en, bgn) >= start)) {
                     continue;
                 }

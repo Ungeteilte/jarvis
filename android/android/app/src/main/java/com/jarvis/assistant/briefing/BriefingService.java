@@ -105,19 +105,52 @@ public class BriefingService extends Service {
         BriefingRules.Decision d = BriefingRules.decide(now, tz, lastActivity,
             BriefingState.restEndAt(c), BriefingState.restMs(c), BriefingState.lastBriefedDay(c),
             BriefingState.enabled(c), BriefingState.onboarded(c), BriefingState.gapHours(c), BriefingState.latestHour(c));
-        BriefingRules.Decision e = d.ok ? null : BriefingRules.decideEvening(now, tz, lastActivity,
-            BriefingState.lastBriefingAt(c), BriefingState.lastEveningDay(c),
-            BriefingState.eveningEnabled(c), BriefingState.onboarded(c), BriefingState.eveningStartHour(c));
+        // Sonntags (Wochenrückblick an) ersetzt der Wochenrückblick die Abendzusammenfassung
+        final boolean weeklyDay = !d.ok && BriefingRules.weeklyReplacesEvening(now, tz, BriefingState.weeklyEnabled(c));
+        BriefingRules.Decision e = d.ok ? null : weeklyDay
+            ? BriefingRules.decideWeekly(now, tz, lastActivity, BriefingState.lastBriefingAt(c), BriefingState.lastWeeklyDay(c),
+                BriefingState.weeklyEnabled(c), BriefingState.onboarded(c), BriefingState.weeklyHour(c))
+            : BriefingRules.decideEvening(now, tz, lastActivity,
+                BriefingState.lastBriefingAt(c), BriefingState.lastEveningDay(c),
+                BriefingState.eveningEnabled(c), BriefingState.onboarded(c), BriefingState.eveningStartHour(c));
         if (!fromBoot) BriefingState.recordUnlock(c, now);
         BriefingRules.Decision go = d.ok ? d : e;
         if (go == null || !go.ok || go.day.equals(BriefingState.pausedDay(c)) || !busy.compareAndSet(false, true)) return;
-        final boolean evening = !d.ok;
+        final boolean evening = !d.ok && !weeklyDay;
+        final boolean weekly = !d.ok && weeklyDay;
         // sofort beanspruchen – kein doppeltes Briefing/kein doppelter Rückblick
-        if (evening) BriefingState.markEvening(c, go.day, false);
+        if (weekly) BriefingState.markWeekly(c, go.day, false);
+        else if (evening) BriefingState.markEvening(c, go.day, false);
         else BriefingState.markBackground(c, go.day, false);
         worker.execute(() -> {
-            try { if (evening) runEvening(now, go.day); else runBriefing(now); } finally { busy.set(false); }
+            try { if (weekly) runWeekly(now, go.day); else if (evening) runEvening(now, go.day); else runBriefing(now); } finally { busy.set(false); }
         });
+    }
+
+    /** Wochenrückblick: nur lokale Zahlen + Kalender der nächsten 7 Tage – kein Netz (schont Akku und Datenbudget). */
+    private void runWeekly(long now, String day) {
+        Context c = this;
+        TimeZone tz = TimeZone.getDefault();
+        List<BriefingText.Event> events = null;
+        if (BriefingState.eveningContent(c, "calendar") && CalendarReader.granted(c)) {
+            List<CalendarReader.Item> items = CalendarReader.read(c, 1, 7, now);
+            if (items != null) {
+                events = new ArrayList<>();
+                for (CalendarReader.Item it : items) events.add(new BriefingText.Event(it.title, it.begin, it.allDay));
+            }
+        }
+        BriefingText.WeekStats ws = BriefingState.eveningContent(c, "chats") ? BriefingState.weekStats(c, day) : null;
+        if (ws != null && (!BriefingState.eveningContent(c, "notes") || !BriefingState.eveningContent(c, "timers"))) {
+            boolean notes = BriefingState.eveningContent(c, "notes"), timers = BriefingState.eveningContent(c, "timers");
+            ws = new BriefingText.WeekStats(ws.chats, ws.activeDays, ws.topics, notes ? ws.notes : 0, ws.memories,
+                ws.remindersDone, timers ? ws.timers : 0, ws.nextReminders);
+        }
+        String text = BriefingText.composeWeekly(now, tz, ws, events, BriefingState.speakTitles(c));
+        BriefingNotifier.weekly(c, text);
+        if (BriefingState.speakAloud(c)) {
+            try { Thread.sleep(SPEAK_DELAY_MS); } catch (InterruptedException ex) { return; }
+            if (isUnlockedAndOn() && BriefingSpeaker.speak(c, text)) BriefingState.markWeeklySpoken(c);
+        }
     }
 
     private void runEvening(long now, String day) {

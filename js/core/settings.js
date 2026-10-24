@@ -2,6 +2,7 @@
 import { DEFAULT_BRIEFING, normalizeBriefingConfig } from './briefing/trigger.js';
 import { RESSORT_IDS } from './briefing/news.js';
 import { DEFAULT_EVENING, normalizeEveningConfig } from './briefing/evening-config.js';
+import { DEFAULT_WEEKLY, normalizeWeeklyConfig } from './briefing/weekly-config.js';
 import { DEFAULT_PREFS, normalizePrefs } from './prefs.js';
 
 export const PROVIDERS = Object.freeze({
@@ -51,6 +52,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   listenOnOpen: false, // v0.9 Stufe 0: beim normalen Öffnen (Seitentaste, „Hey Google, öffne Jarvis“) sofort zuhören
   briefing: DEFAULT_BRIEFING,
   evening: DEFAULT_EVENING,
+  weekly: DEFAULT_WEEKLY, // v0.9.3: Wochenrückblick sonntags (ersetzt dann die Abendzusammenfassung)
   memoryToAI: true, // Gedächtnis-Einträge mit an die KI senden (abschaltbar)
   prefs: DEFAULT_PREFS
 });
@@ -69,6 +71,7 @@ export function loadSettings(store) {
     wakeMuteBeep: typeof s.wakeMuteBeep === 'boolean' ? s.wakeMuteBeep : DEFAULT_SETTINGS.wakeMuteBeep,
     listenOnOpen: s.listenOnOpen === true,
     evening: normalizeEveningConfig(s.evening),
+    weekly: normalizeWeeklyConfig(s.weekly),
     memoryToAI: typeof s.memoryToAI === 'boolean' ? s.memoryToAI : DEFAULT_SETTINGS.memoryToAI,
     prefs: normalizePrefs(s.prefs)
   };

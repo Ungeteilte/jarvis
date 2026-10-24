@@ -143,6 +143,17 @@ Beim **ersten Öffnen am Abend** (Standard ab 19 Uhr, einstellbar 17–22 Uhr, b
 - Gleiche Schutzregeln wie beim Briefing: Daten eingezäunt, keine Werkzeuge während des Rückblicks, keine Koordinaten an die KI, ohne Schlüssel eine Vorlage.
 - **Android:** mit „Im Hintergrund bereithalten“ zeigt Jarvis beim ersten Entsperren am Abend still „Guten Abend – Ihr Tagesrückblick ist bereit“ (eigener leiser Kanal) und liest auf Wunsch vor (gleiche Sperren wie morgens).
 
+## 🗓️ Wochenrückblick (ab v0.9.3)
+
+**Sonntags** beim ersten Öffnen ab der eingestellten Uhrzeit (Standard 18 Uhr, einstellbar 9–21 Uhr, bis 23 Uhr) gibt Jarvis einen Wochenrückblick: Höhepunkte der letzten sieben Tage (Anzahl der Gespräche, an wie vielen Tagen, feste Themen – keine Zitate; neue Notizen, gemerkte Dinge, erledigte Erinnerungen, abgelaufene Timer) und einen Ausblick auf die neue Woche (Termine der nächsten 7 Tage nur in der Android-App, anstehende Erinnerungen). Zum Schluss: „Soll ich Ihnen für die neue Woche eine Erinnerung stellen oder mir etwas merken?“
+
+- **Ersetzt sonntags die Abendzusammenfassung** (kein doppelter Rückblick). Ist der Wochenrückblick aus, kommt sonntags wie gewohnt die Abendzusammenfassung.
+- Einmal pro Sonntag, nicht innerhalb einer Stunde nach einem Morgen-Briefing, nie beim allerersten Start.
+- Einstellungen: „Morgen-Briefing & Abend“ → „Wochenrückblick“ (an/aus, Uhrzeit, „Jetzt testen“). Welche Inhalte vorkommen, folgt den Schaltern der Abendzusammenfassung.
+- Per Sprache: „Wochenrückblick“, „Wie war meine Woche?“, „Was steht nächste Woche an?“; „Wochenrückblick aus/an“. Danach z. B. „Welche Termine?“. Neu im Kalender-Werkzeug: „Was steht diese Woche im Kalender?“ (7 Tage, nur Android).
+- Gleiche Schutzregeln wie beim Abend: Daten eingezäunt, keine Werkzeuge, Gedächtnis-Texte nur mit „Gedächtnis an die KI geben“, ohne Schlüssel eine Vorlage.
+- **Android:** mit „Im Hintergrund bereithalten“ meldet Jarvis sonntags beim ersten Entsperren still „Ihr Wochenrückblick ist bereit“ (Kanal der Abendzusammenfassung) und liest auf Wunsch eine Kurzfassung vor. Die Kurzfassung entsteht **ohne Netz** (nur Zahlen, feste Themen und Ihr Kalender) – kein neuer Hintergrund-Job, der Akku-Rahmen (< 0,5 %/Tag) bleibt.
+
 ## 🧠 Gedächtnis & Vorlieben (ab v0.8)
 
 - **„Merk dir, dass …“** speichert einen Fakt (max. 200 Zeichen, max. 150 Einträge). „Vergiss das“ nimmt den letzten Eintrag

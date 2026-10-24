@@ -96,9 +96,9 @@ export function createNativeDevice() {
     },
 
     /** Termine aus dem Gerätekalender (READ_CALENDAR). dayOffset 0 = heute, 1 = morgen. */
-    async getCalendarEvents({ dayOffset = 0, interactive = true } = {}) {
+    async getCalendarEvents({ dayOffset = 0, days = 1, interactive = true } = {}) {
       try {
-        const r = await J().getCalendarEvents({ dayOffset, interactive });
+        const r = await J().getCalendarEvents({ dayOffset, days, interactive });
         return r?.ok ? { ok: true, events: r.events || [] } : { ok: false, permission: r?.permission, message: r?.message };
       } catch (e) {
         return { ok: false, message: e?.message || 'Kalender nicht lesbar.' };

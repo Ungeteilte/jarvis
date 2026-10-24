@@ -1,0 +1,336 @@
+{
+ "timeZone": "Europe/Berlin",
+ "note": "Gemeinsame Testfälle für js/core/briefing/weekly.js (shouldWeekly) und BriefingRules.decideWeekly (Java) – beide Kopien müssen identisch sein.",
+ "cases": [
+  {
+   "name": "Sonntag 18:30 (Zeitumstellung am selben Tag)",
+   "now": "2026-10-25T18:30:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Sonntag genau 18:00",
+   "now": "2026-10-25T18:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Sonntag 17:59 zu früh",
+   "now": "2026-10-25T17:59:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Sonntag 22:59 noch erlaubt",
+   "now": "2026-10-25T22:59:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Sonntag 23:00 Nachtsperre",
+   "now": "2026-10-25T23:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "night",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Montag 00:30 zählt noch als Sonntag, aber Nacht",
+   "now": "2026-10-26T00:30:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "night",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Samstag 19:00 kein Sonntag",
+   "now": "2026-10-24T19:00:00+02:00",
+   "lastActiveAt": "2026-10-24T12:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "not-sunday",
+    "day": "2026-10-24"
+   }
+  },
+  {
+   "name": "Montag 19:00 kein Sonntag",
+   "now": "2026-10-26T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "not-sunday",
+    "day": "2026-10-26"
+   }
+  },
+  {
+   "name": "schon erledigt",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "2026-10-25",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "already",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "letzter Sonntag zählt nicht",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "2026-10-18",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "aus",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": false,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "disabled",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Einrichtung offen",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": false,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "onboarding",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "erster Start",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": null,
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "first-start",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Uhr verstellt",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T20:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "clock",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Briefing vor 30 Minuten",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": "2026-10-25T18:30:00+01:00",
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": false,
+    "reason": "recent-briefing",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Briefing vor 2 Stunden",
+   "now": "2026-10-25T19:00:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": "2026-10-25T17:00:00+01:00",
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Uhrzeit 9 – vormittags",
+   "now": "2026-10-25T09:30:00+01:00",
+   "lastActiveAt": "2026-10-25T08:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 9,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Uhrzeit unter Minimum wird 9",
+   "now": "2026-10-25T08:30:00+01:00",
+   "lastActiveAt": "2026-10-25T08:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 3,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Uhrzeit 21",
+   "now": "2026-10-25T20:59:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 21,
+   "expect": {
+    "ok": false,
+    "reason": "early",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Uhrzeit über Maximum wird 21",
+   "now": "2026-10-25T21:10:00+01:00",
+   "lastActiveAt": "2026-10-25T12:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 30,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-10-25"
+   }
+  },
+  {
+   "name": "Sonntag im Sommer 18:05",
+   "now": "2026-07-05T18:05:00+02:00",
+   "lastActiveAt": "2026-07-05T10:00:00+02:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2026-07-05"
+   }
+  },
+  {
+   "name": "Silvester-Sonntag 2028",
+   "now": "2028-12-31T19:00:00+01:00",
+   "lastActiveAt": "2028-12-31T10:00:00+01:00",
+   "lastBriefingAt": null,
+   "lastWeeklyDay": "",
+   "enabled": true,
+   "onboarded": true,
+   "hour": 18,
+   "expect": {
+    "ok": true,
+    "reason": "weekly",
+    "day": "2028-12-31"
+   }
+  }
+ ]
+}

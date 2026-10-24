@@ -21,7 +21,8 @@ import com.jarvis.assistant.R;
  * Zwei eigene Kanäle (getrennt vom Updater-Kanal „updates“, ID 4711):
  *  - ready_v1  „Jarvis bereit“: IMPORTANCE_MIN, lautlos, ohne Symbol in der Statusleiste, ohne Badge (ID 4721)
  *  - briefing_v1 „Morgen-Briefing“: IMPORTANCE_LOW, ohne Ton und Vibration, privat auf dem Sperrbildschirm (ID 4722)
- *  - evening_v1 „Abendzusammenfassung“: gleiche leise Voreinstellungen (ID 4723)
+ *  - evening_v1 „Abendzusammenfassung“: gleiche leise Voreinstellungen (ID 4723) – auch für den
+ *    Wochenrückblick am Sonntag (ersetzt dann den Tagesrückblick, gleiche ID, eigener Titel)
  * Kanal-Einstellungen sind nach dem ersten Anlegen fest (der Nutzer kann sie ändern) → Version im Namen.
  */
 public final class BriefingNotifier {
@@ -106,6 +107,7 @@ public final class BriefingNotifier {
 
     static String readyText(Context c) {
         boolean m = BriefingState.enabled(c), e = BriefingState.eveningEnabled(c);
+        if (!m && !e && BriefingState.weeklyEnabled(c)) return "Wochenrückblick beim ersten Entsperren am Sonntag";
         if (m && e) return "Briefing am Morgen, Rückblick am Abend – beim ersten Entsperren";
         if (e) return "Tagesrückblick beim ersten Entsperren am Abend";
         return "Briefing beim ersten Entsperren am Morgen";
@@ -118,20 +120,28 @@ public final class BriefingNotifier {
 
     /** „Guten Abend – Ihr Tagesrückblick ist bereit“ (eigener leiser Kanal). */
     static void evening(Context c, String text) {
-        post(c, text, true);
+        post(c, text, true, false);
     }
 
-    private static void post(Context c, String text, boolean evening) {
+    /** „Ihr Wochenrückblick ist bereit“ (Kanal der Abendzusammenfassung, ersetzt sonntags den Tagesrückblick). */
+    static void weekly(Context c, String text) {
+        post(c, text, true, true);
+    }
+
+    private static void post(Context c, String text, boolean evening) { post(c, text, evening, false); }
+
+    private static void post(Context c, String text, boolean evening, boolean weekly) {
         if (!canNotify(c)) return;
         ensureChannels(c);
         String channel = evening ? CHANNEL_EVENING : CHANNEL_BRIEFING;
         String nonce = BriefingState.newNonce(c);
         Intent open = new Intent(c, MainActivity.class).setAction(BriefingLaunch.ACTION)
             .putExtra(BriefingLaunch.EXTRA_NONCE, nonce)
-            .putExtra(BriefingLaunch.EXTRA_KIND, evening ? BriefingLaunch.KIND_EVENING : BriefingLaunch.KIND_MORNING)
+            .putExtra(BriefingLaunch.EXTRA_KIND, weekly ? BriefingLaunch.KIND_WEEKLY : evening ? BriefingLaunch.KIND_EVENING : BriefingLaunch.KIND_MORNING)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, evening ? RC_EVENING_OPEN : RC_OPEN, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        String title = evening ? "Guten Abend – Ihr Tagesrückblick ist bereit" : "Guten Morgen – Ihr Briefing ist bereit";
+        String title = weekly ? "Ihr Wochenrückblick ist bereit"
+            : evening ? "Guten Abend – Ihr Tagesrückblick ist bereit" : "Guten Morgen – Ihr Briefing ist bereit";
         Notification pub = new NotificationCompat.Builder(c, channel)
             .setSmallIcon(R.drawable.ic_stat_jarvis).setContentTitle(title).setContentText("Entsperren zum Ansehen").build();
         NotificationCompat.Builder b = new NotificationCompat.Builder(c, channel)

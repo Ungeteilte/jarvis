@@ -21,7 +21,9 @@ import {
   gatherFacts, buildBriefingMessages, templateBriefing, factsContext, localFollowUp,
   isBriefingRequest, handleBriefingCommand, saveBriefingState, loadBriefingState, dayKey, RESSORT_IDS, normalizeBriefingConfig,
   gatherEveningFacts, buildEveningMessages, templateEvening, eveningContext, eveningFollowUp,
-  isEveningRequest, eveningCommand, normalizeEveningConfig
+  isEveningRequest, eveningCommand, normalizeEveningConfig,
+  gatherWeeklyFacts, buildWeeklyMessages, templateWeekly, weeklyContext, weeklyFollowUp,
+  isWeeklyRequest, weeklyCommand, normalizeWeeklyConfig
 } from './briefing/index.js';
 
 const HISTORY_KEY = 'history';
@@ -192,11 +194,13 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
    */
   async function brief({ onDelta, signal, auto = false, replyTo = 'briefing', kind = 'morning' } = {}) {
     const evening = kind === 'evening';
+    const weekly = kind === 'weekly';
     const settings = loadSettings(store);
     const cfg = normalizeBriefingConfig(settings.briefing, RESSORT_IDS);
     const c = { ...ctx(), interactive: !auto, signal };
     const nowMs = c.now.getTime();
-    if (evening) saveBriefingState(store, { lastEveningDay: dayKey(nowMs, timeZone), lastEveningAt: nowMs });
+    if (weekly) saveBriefingState(store, { lastWeeklyDay: dayKey(nowMs, timeZone), lastWeeklyAt: nowMs });
+    else if (evening) saveBriefingState(store, { lastEveningDay: dayKey(nowMs, timeZone), lastEveningAt: nowMs });
     else saveBriefingState(store, { lastBriefingDay: dayKey(nowMs, timeZone), lastBriefingAt: nowMs });
     let seq = 0;
     let emitted = false;
@@ -207,7 +211,13 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       }
       try { onDelta?.(d); } catch { /* UI-Fehler nicht durchreichen */ }
     };
-    const facts = evening
+    const facts = weekly
+      ? await gatherWeeklyFacts({
+        registry: tools, ctx: c, eveningCfg: normalizeEveningConfig(settings.evening),
+        history: history.filter((m) => m.source !== 'briefing'), firedTimers: loadBriefingState(store).firedTimers || [],
+        memoryTexts: settings.memoryToAI
+      })
+      : evening
       ? await gatherEveningFacts({
         registry: tools, ctx: c, cfg: normalizeEveningConfig(settings.evening), briefingCfg: cfg,
         history: history.filter((m) => m.source !== 'briefing'), firedTimers: loadBriefingState(store).firedTimers || []
@@ -218,7 +228,8 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     let source = 'briefing';
     if (pcfg.apiKey) {
       try {
-        const msgs = evening ? buildEveningMessages({ name: c.name, facts }) : buildBriefingMessages({ name: c.name, facts });
+        const msgs = weekly ? buildWeeklyMessages({ name: c.name, facts })
+          : evening ? buildEveningMessages({ name: c.name, facts }) : buildBriefingMessages({ name: c.name, facts });
         const out = await askAIStream(pcfg, msgs, {
           onDelta: relay, fetchFn, signal, timeoutMs: 25000, stream
         });
@@ -230,12 +241,13 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     }
     if (!text) {
       if (emitted) relay({ type: 'reset' });
-      text = evening ? templateEvening(facts, { name: c.name }) : templateBriefing(facts, { name: c.name });
+      text = weekly ? templateWeekly(facts, { name: c.name })
+        : evening ? templateEvening(facts, { name: c.name }) : templateBriefing(facts, { name: c.name });
       relay({ type: 'text', text });
       source = 'briefing';
     }
     emitEvent(makeDeltaEvent({ replyTo, seq: seq++, done: true }));
-    return add('assistant', text, { source, kind: evening ? 'evening' : 'morning', facts, auto: Boolean(auto) });
+    return add('assistant', text, { source, kind: weekly ? 'weekly' : evening ? 'evening' : 'morning', facts, auto: Boolean(auto) });
   }
 
   return {
@@ -330,6 +342,11 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       const cmd = handleBriefingCommand(input, store);
       if (cmd) return add('assistant', cmd, { source: 'skill', settingsChanged: true });
       if (isBriefingRequest(input)) return brief({ onDelta, signal, auto: false, replyTo: userMsg.id });
+      // 0a) Wochenrückblick (v0.9.3): „Wochenrückblick aus/an“, „Wie war meine Woche?“
+      const wcfg = normalizeWeeklyConfig(loadSettings(store).weekly);
+      const wcmd = weeklyCommand(input, wcfg, (next) => saveSettings(store, { weekly: normalizeWeeklyConfig(next) }));
+      if (wcmd) return add('assistant', wcmd, { source: 'skill', settingsChanged: true });
+      if (isWeeklyRequest(input)) return brief({ onDelta, signal, auto: false, replyTo: userMsg.id, kind: 'weekly' });
       // 0b) Abendzusammenfassung: „Abendzusammenfassung aus/an“, „Wie war mein Tag?“
       const ecfg = normalizeEveningConfig(loadSettings(store).evening);
       const ecmd = eveningCommand(input, ecfg, (next) => saveSettings(store, { evening: normalizeEveningConfig(next) }));
@@ -385,7 +402,8 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       // 3) KI mit Tool-Schleife
       const cfg = resolveProvider(loadSettings(store));
       if (!cfg.apiKey && recent) {
-        const fu = recentEvening ? eveningFollowUp(input, recent.facts) : localFollowUp(input, recent.facts);
+        const fu = recent.kind === 'weekly' ? weeklyFollowUp(input, recent.facts)
+          : recentEvening ? eveningFollowUp(input, recent.facts) : localFollowUp(input, recent.facts);
         if (fu) return add('assistant', fu, { source: 'skill' });
       }
       if (!cfg.apiKey) {
@@ -400,7 +418,8 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       });
       let loopTools = tools;
       if (recent) {
-        system += '\n' + (recentEvening ? eveningContext(recent.facts) : factsContext(recent.facts));
+        system += '\n' + (recent.kind === 'weekly' ? weeklyContext(recent.facts)
+          : recentEvening ? eveningContext(recent.facts) : factsContext(recent.facts));
         loopTools = createToolRegistry(tools.list().filter((t) => FOLLOW_UP_TOOLS.has(t.name)));
       }
       const chat = history.filter((m) => m.role === 'user' || (m.role === 'assistant' && m.source !== 'system'));

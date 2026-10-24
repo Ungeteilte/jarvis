@@ -528,6 +528,87 @@ with sync_playwright() as p:
         epage.screenshot(path=str(SHOTS / "evening.png"))
         ectx.close()
 
+    # 8b) v0.9.3: Wochenrückblick – sonntags ab 18 Uhr ersetzt er die Abendzusammenfassung (einmal pro Sonntag)
+    wctx = browser.new_context(viewport={"width": 412, "height": 915}, is_mobile=True, has_touch=True,
+                               locale="de-DE", timezone_id="Europe/Berlin")
+    wctx.add_init_script("""
+      if (window.speechSynthesis) speechSynthesis.speak = () => {};
+      if (!localStorage.getItem('jarvis.persona')) {
+        const now = Date.parse('2026-10-25T19:10:00+01:00');
+        localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Jarvis', onboarded: true }));
+        localStorage.setItem('jarvis.settings', JSON.stringify({ provider: 'gemini', apiKeys: { gemini: 'test-key' }, speak: true, memoryToAI: false }));
+        localStorage.setItem('jarvis.briefingState', JSON.stringify({ lastActiveAt: now - 3 * 3600000, lastBriefingDay: '2026-10-25', lastBriefingAt: now - 11 * 3600000 }));
+        localStorage.setItem('jarvis.history', JSON.stringify([
+          { id: 'w1', role: 'user', text: 'Wie wird das Wetter? Geheimprojekt Falke', at: '2026-10-21T06:30:00.000Z' },
+          { id: 'w2', role: 'assistant', text: 'Sonnig.', at: '2026-10-21T06:30:02.000Z' },
+          { id: 'w3', role: 'user', text: 'Stell einen Timer auf 5 Minuten', at: '2026-10-23T10:00:00.000Z' }
+        ]));
+        localStorage.setItem('jarvis.notes', JSON.stringify([{ text: 'Vertraulich: Brot kaufen', at: '2026-10-22T09:00:00.000Z' }]));
+        localStorage.setItem('jarvis.memory', JSON.stringify({ version: 1, items: [{ id: 'm1', text: 'Geheimer Gedächtniseintrag', erstellt: '2026-10-22T09:00:00.000Z' }] }));
+      }
+    """)
+    wpage = wctx.new_page()
+    wpage.clock.set_fixed_time("2026-10-25T19:10:00+01:00")
+    wpage.on("pageerror", lambda e: errors.append(f"weekly pageerror: {e}"))
+    wpage.on("console", lambda m: m.type == "error" and errors.append(f"weekly console: {m.text}"))
+    wnet = {"ai": [], "other": []}
+    def w_gem(route):
+        if route.request.method == "GET":
+            route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body=json.dumps({"data": []}))
+            return
+        wnet["ai"].append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"},
+                      body=json.dumps({"choices": [{"message": {"content": "Guten Abend, Sir. Ihre Woche war erfreulich ruhig. Soll ich Ihnen für die neue Woche eine Erinnerung stellen?"}}]}))
+    def w_other(route):
+        wnet["other"].append(route.request.url)
+        route.fulfill(status=200, content_type="application/json", headers={"access-control-allow-origin": "*"}, body="{}")
+    wpage.route("https://generativelanguage.googleapis.com/**", w_gem)
+    wpage.route("https://api.open-meteo.com/**", w_other)
+    wpage.route("https://www.tagesschau.de/**", w_other)
+    wpage.goto(URL)
+    wpage.wait_for_load_state("networkidle")
+    wcard = None
+    try:
+        wcard = wpage.wait_for_selector("#weekly-card", timeout=4000)
+    except Exception:
+        pass
+    check("Woche: Sonntagabend → Karte „Wochenrückblick“", wcard is not None and "Wochenrückblick" in (wcard.inner_text() if wcard else ""))
+    check("Woche: ersetzt sonntags den Tagesrückblick", wpage.locator("#evening-card").count() == 0 and wpage.locator("#briefing-card").count() == 0)
+    if wcard:
+        wpage.click("#weekly-card .start-go")
+    try:
+        wpage.wait_for_selector(".msg.assistant:has-text('erfreulich ruhig')", timeout=10000)
+    except Exception:
+        pass
+    check("Woche: KI-Text angezeigt", wpage.locator(".msg.assistant", has_text="erfreulich ruhig").count() == 1)
+    wai = wnet["ai"][0] if wnet["ai"] else {}
+    wai_text = json.dumps(wai, ensure_ascii=False)
+    check("Woche: KI-Aufruf ohne Werkzeuge, Daten eingezäunt", bool(wai) and not wai.get("tools") and "<daten>" in wai_text)
+    if wai and ("Falke" in wai_text or "Geheimer" in wai_text): print("INFO Woche-Daten:", wai_text[:600])
+    check("Woche: Statistik statt Zitate (keine Chattexte; Gedächtnis nur mit Freigabe; Notizen wie am Abend)",
+          bool(wai) and "Falke" not in wai_text and "Geheimer" not in wai_text and "Vertraulich: Brot kaufen" in wai_text)
+    check("Woche: kein Netzabruf für Wetter/Nachrichten", wnet["other"] == [])
+    wst = wpage.evaluate("JSON.parse(localStorage.getItem('jarvis.briefingState') || '{}')")
+    check("Woche: Sonntag gemerkt (Abend unberührt)", wst.get("lastWeeklyDay") == "2026-10-25" and not wst.get("lastEveningDay"))
+    wpage.reload(); wpage.wait_for_load_state("networkidle"); wpage.wait_for_timeout(800)
+    check("Woche: kein zweites Mal am selben Sonntag (auch kein Tagesrückblick)",
+          wpage.locator("#weekly-card").count() == 0 and wpage.locator("#evening-card").count() == 0 and len(wnet["ai"]) == 1)
+    wpage.fill("#input", "Wochenrückblick aus"); wpage.click("#btn-send"); wpage.wait_for_timeout(700)
+    wr = wpage.locator(".msg.assistant").last.inner_text()
+    wcfg = wpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).weekly")
+    check("Woche: 'Wochenrückblick aus' per Sprache", wcfg.get("enabled") is False and "ausgeschaltet" in wr)
+    open_settings(wpage, 300)
+    check("Woche: Einstellungen in „Morgen-Briefing & Abend“ (9–21 Uhr)",
+          wpage.is_visible("#weekly-fieldset") and wpage.locator("#grp-briefing #weekly-fieldset").count() == 1
+          and wpage.locator("#set-week-hour option").count() == 13 and not wpage.is_checked("#set-week-enabled"))
+    wpage.check("#set-week-enabled")
+    wpage.select_option("#set-week-hour", "20")
+    wpage.click(".settings-save .btn"); wpage.wait_for_timeout(300)
+    wcfg = wpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).weekly")
+    check("Woche: Einstellungen gespeichert", wcfg.get("enabled") is True and wcfg.get("hour") == 20)
+    wpage.screenshot(path=str(SHOTS / "weekly.png"))
+    wctx.close()
+
     # 9) v0.8: Gedächtnis, Vorlieben, Zaun im Prompt, Websites nur nach Bestätigung, keine Links in Antworten
     mctx = browser.new_context(viewport={"width": 412, "height": 915}, is_mobile=True, has_touch=True,
                                locale="de-DE", timezone_id="Europe/Berlin")
@@ -709,8 +790,8 @@ with sync_playwright() as p:
     check("Einstellungen: Stand aus v0.8.1 vollständig im neuen Menü", old_ok)
     # Benachrichtigungen lesen: nur Vorschau, gesperrt, ohne Wirkung
     nd = spage.evaluate("[...document.querySelectorAll('#notif-fieldset input')].map((i) => i.disabled)")
-    check("Benachrichtigungen lesen: alles gesperrt + Hinweis „kommt in v0.9.1“",
-          nd and all(nd) and spage.evaluate("document.querySelector('#notif-fieldset').disabled") and "kommt in v0.9.1" in spage.inner_text("#notif-fieldset").lower())
+    check("Benachrichtigungen lesen: alles gesperrt + Hinweis „kommt in einer späteren Version“",
+          nd and all(nd) and spage.evaluate("document.querySelector('#notif-fieldset').disabled") and "kommt in einer späteren version" in spage.inner_text("#notif-fieldset").lower())
     spage.locator("#set-notif-ai").click(force=True)
     check("Benachrichtigungen lesen: Tipp auf den Schalter ändert nichts", not spage.is_checked("#set-notif-ai"))
     check("Updates (Web): Hinweis auf Selbst-Aktualisierung, kein App-Updater", spage.is_visible("#upd-web") and spage.locator("#upd-fieldset").count() == 0)
