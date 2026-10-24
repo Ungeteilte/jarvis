@@ -113,7 +113,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
   const b = {
     enabled: $('#set-brief-enabled'), gap: $('#set-brief-gap'), latest: $('#set-brief-latest'),
     weather: $('#set-brief-weather'), calendar: $('#set-brief-calendar'), news: $('#set-brief-news'),
-    battery: $('#set-brief-battery'), notes: $('#set-brief-notes'), ressorts: $('#brief-ressorts'),
+    battery: $('#set-brief-battery'), notes: $('#set-brief-notes'), impulse: $('#set-brief-impulse'), ressorts: $('#brief-ressorts'),
     bg: $('#set-brief-bg'), speak: $('#set-brief-speak'), titles: $('#set-brief-titles'),
     loc: $('#brief-loc-status'), nativeStatus: $('#brief-native-status')
   };
@@ -137,6 +137,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     b.news.checked = cfg.content.news;
     b.battery.checked = cfg.content.battery;
     b.notes.checked = cfg.content.notes;
+    b.impulse.checked = cfg.content.impulse;
     b.ressorts.querySelectorAll('input').forEach((c) => { c.checked = cfg.newsRessorts.includes(c.value); });
     b.bg.checked = cfg.background;
     b.speak.checked = cfg.speakAloud;
@@ -150,7 +151,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       enabled: b.enabled.checked,
       gapHours: Number(b.gap.value),
       latestHour: Number(b.latest.value),
-      content: { weather: b.weather.checked, calendar: b.calendar.checked, news: b.news.checked, battery: b.battery.checked, notes: b.notes.checked },
+      content: { weather: b.weather.checked, calendar: b.calendar.checked, news: b.news.checked, battery: b.battery.checked, notes: b.notes.checked, impulse: b.impulse.checked },
       newsRessorts: [...b.ressorts.querySelectorAll('input:checked')].map((c) => c.value),
       background: b.bg.checked,
       speakAloud: b.speak.checked,

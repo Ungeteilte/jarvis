@@ -134,6 +134,16 @@ Beim **ersten Öffnen nach dem Aufwachen** (keine Nutzung seit mindestens 4 Stun
 - Datenschutz: Der Standort wird auf ca. 1 km gerundet, nur an Open-Meteo geschickt und **nie an die KI**. Fremde Texte (Schlagzeilen, Termine) werden bereinigt und als reine Daten markiert; das Briefing selbst ruft keine Werkzeuge auf.
 - **Android (ab v0.4):** optional „Im Hintergrund bereithalten“ (Standard aus). Dann zeigt Jarvis beim ersten Entsperren am Morgen eine stille Benachrichtigung mit der Kurzfassung und liest sie auf Wunsch vor (nicht bei Anruf, lautlos/Vibration oder „Nicht stören“; Lautstärke wird nie verändert). Die Hintergrund-Kurzfassung entsteht ohne KI und ohne API-Schlüssel.
 
+## ✨ Morgen-Impuls (ab v0.9.5)
+
+Am Ende des Morgen-Briefings ergänzt Jarvis **einen Satz**: abwechselnd einen Gedanken für den Tag („Und ein Gedanke für heute: …“) oder einen kuriosen Fakt („Übrigens: …“).
+
+- Der Impuls steht **direkt vor der abschließenden Rückfrage** („Soll ich Ihnen mehr zu … sagen?“). So bleibt die Rückfrage der letzte Satz, und ein „Ja“ beantwortet weiterhin sie.
+- Die rund 60 Sätze sind **fest in der App** gespeichert (kein Netz, kein neuer Server, kein KI-Aufruf). Sie werden gemischt und kommen **erst wieder, wenn alle einmal dran waren**; am selben Tag bleibt es derselbe Satz.
+- Mit KI-Schlüssel formuliert die KI das Briefing wie bisher und wird angewiesen, keinen eigenen Spruch hinzuzufügen – den Impuls setzt die App selbst ein.
+- Einstellungen: „Morgen-Briefing & Abend“ → Inhalte → „Morgen-Impuls am Ende“ (Standard an). Per Sprache: „Morgen-Impuls aus“ / „Morgen-Impuls an“ / „Kein Impuls mehr“.
+- Nur im Briefing in der App; die stille Hintergrund-Kurzfassung auf Android bleibt kurz und ohne Impuls. Abend- und Wochenrückblick bleiben unverändert.
+
 ## 🌙 Abendzusammenfassung (ab v0.6)
 
 Beim **ersten Öffnen am Abend** (Standard ab 19 Uhr, einstellbar 17–22 Uhr, bis 23 Uhr) gibt Jarvis einen kurzen Tagesrückblick: wie oft und zu welchen Themen Sie heute gefragt haben (nur Anzahl und feste Themen, keine Zitate), heute notierte Dinge, abgelaufene Timer – und einen Ausblick auf morgen (erste Termine nur in der Android-App, Wetter morgen, optional Schlagzeilen des Tages mit den gewählten Ressorts). Zum Schluss ein Angebot: „Soll ich Ihnen einen Wecker für morgen stellen …?“ – danach genügt „7 Uhr“ oder „halb sieben“.

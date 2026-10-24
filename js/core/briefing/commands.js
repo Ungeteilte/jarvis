@@ -3,6 +3,7 @@ import { normalizeText } from '../wakeword.js';
 import { loadSettings, saveSettings } from '../settings.js';
 import { RESSORTS, RESSORT_IDS, ressortsFromWords } from './news.js';
 import { normalizeBriefingConfig } from './trigger.js';
+import { impulseToggle } from './impulse.js';
 
 const REQUEST = [
   /^(?:guten morgen|morgen|moin(?: moin)?)(?: [a-z]+)?$/,
@@ -40,6 +41,13 @@ export function handleBriefingCommand(text, store) {
   if (/^(?:das |mein )?(?:morgen ?)?briefing (?:bitte )?(?:an|ein|einschalten|aktivieren)$|^(?:schalte?|mach) (?:das |mein )?(?:morgen ?)?briefing (?:an|ein)$/.test(t)) {
     save({ enabled: true });
     return 'Sehr gern, das Morgen-Briefing ist eingeschaltet. Ich melde mich morgens beim ersten Öffnen.';
+  }
+  const imp = impulseToggle(text, normalizeText);
+  if (imp) {
+    save({ content: { ...cfg.content, impulse: imp.enabled } });
+    return imp.enabled
+      ? 'Gern, am Ende des Morgen-Briefings gibt es wieder einen kleinen Impuls – mal ein Gedanke für den Tag, mal ein kurioser Fakt.'
+      : 'Verstanden, das Morgen-Briefing kommt künftig ohne Impuls am Ende. Mit „Morgen-Impuls an“ ist er wieder da.';
   }
   if (/^(?:(?:bitte )?(?:wieder )?alle nachrichten|nachrichten (?:wieder )?(?:alle|komplett)|alle ressorts)(?: im briefing)?(?: bitte)?$/.test(t)) {
     save({ newsRessorts: [], content: { ...cfg.content, news: true } });
