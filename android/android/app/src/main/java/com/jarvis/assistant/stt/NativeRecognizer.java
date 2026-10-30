@@ -49,6 +49,13 @@ public final class NativeRecognizer {
 
     /** Startet ein Segment (ersetzt ein laufendes). */
     public void start(String id, String language, boolean partial, boolean muteBeep) {
+        start(id, language, partial, muteBeep, 0, 0);
+    }
+
+    /** v0.9.6: mit Satzende-Hinweisen (ms; 0 = Standard des Erkenners), siehe SttTiming. */
+    public void start(String id, String language, boolean partial, boolean muteBeep, int completeSilenceMs, int possiblySilenceMs) {
+        final int complete = SttTiming.silenceMs(completeSilenceMs);
+        final int possibly = SttTiming.possiblySilenceMs(possiblySilenceMs, completeSilenceMs);
         main.post(() -> {
             destroyCurrent();
             session = id;
@@ -61,6 +68,8 @@ public final class NativeRecognizer {
                 i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
                 i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, partial);
                 i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.getPackageName());
+                if (complete > 0) i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, (long) complete);
+                if (possibly > 0) i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, (long) possibly);
                 if (muteBeep) {
                     BeepMuter.mute(ctx);
                     main.postDelayed(unmute, UNMUTE_FALLBACK_MS);

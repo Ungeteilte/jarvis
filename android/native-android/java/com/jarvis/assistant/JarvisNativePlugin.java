@@ -299,7 +299,9 @@ public class JarvisNativePlugin extends Plugin {
         if (!recognizer.hasPermission()) { call.reject("not-allowed"); return; }
         boolean partial = !Boolean.FALSE.equals(call.getBoolean("partial", true));
         boolean mute = Boolean.TRUE.equals(call.getBoolean("muteBeep", false)) && !BackgroundSpeech.isSpeaking();
-        recognizer.start(session, call.getString("language", "de-DE"), partial, mute);
+        int complete = call.getInt("completeSilenceMs", 0);
+        int possibly = call.getInt("possiblyCompleteSilenceMs", 0);
+        recognizer.start(session, call.getString("language", "de-DE"), partial, mute, complete, possibly);
         call.resolve();
     }
 

@@ -84,3 +84,8 @@ export function createWakeMatcher(name) {
     return { matched: false, command: '', greeting: '' };
   };
 }
+
+/** v0.9.6: Nur „Hey <Name>“ (bzw. nur der Name) ohne weiteren Text? „Danke Jarvis“ zählt nicht. */
+export function isBareWake(m) {
+  return Boolean(m?.matched && !m.command && String(m.greeting || '').split(' ').filter(Boolean).every((w) => GREETINGS.has(w)));
+}

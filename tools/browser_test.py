@@ -146,6 +146,10 @@ with sync_playwright() as p:
     if voice_opts:
         page.select_option("#set-voice", voice_opts[0])
     check("Stimmen-Auswahl vorhanden", page.locator("#set-voice option").count() >= 1)
+    rng = page.evaluate("(() => { const r = document.querySelector('#set-rate'); return [r.min, r.max, r.step, r.value, !!r.closest('#grp-speech')]; })()")
+    check("v0.9.6 Sprechtempo-Regler 0,8–1,5 (Standard 1,0) unter „Sprache & Wake-Word“", rng == ["0.8", "1.5", "0.05", "1", True])
+    fu = page.evaluate("(() => [document.querySelector('#set-followup').checked, document.querySelector('#set-followup-sec').value, !!document.querySelector('#set-followup').closest('#grp-speech'), document.querySelector('#set-tempo').value])()")
+    check("v0.9.6 Nachfrage-Modus (an, 8 s) + Antwort-Tempo „Schnell“ als Standard", fu == [True, "8", True, "fast"])
     before = page.evaluate("window.__speakCalls.length")
     page.click("#btn-preview")
     page.wait_for_timeout(2500)
@@ -216,6 +220,10 @@ with sync_playwright() as p:
     check("Live: Satzweise Sprachausgabe (erster Satz einzeln)", len(spoken) >= 1 and spoken[0] == "Guten Abend, Sir.")
     print("INFO gesprochene Sätze:", spoken)
     check("Live: nur eine Antwort-Blase", page.locator(".msg.assistant", has_text="Live-Antwort").count() == 1)
+    rates = page.evaluate("window.__speakCalls.map(c => c.rate)")
+    check("v0.9.6 Sprechtempo an speechSynthesis übergeben (1,0)", len(rates) >= 1 and all(r is not None and abs(r - 1.0) < 1e-6 for r in rates))
+    check("v0.9.6 Getippte Frage: kein Nachfrage-Zuhören", page.evaluate("document.querySelector('#orb').dataset.state") != "followup")
+    check("v0.9.6 xAI: kein reasoning_effort gesendet", "reasoning_effort" not in sent["body"])
 
     # 4b) Gemini als Anbieter (gemockt)
     open_settings(page, 300)
@@ -226,6 +234,16 @@ with sync_playwright() as p:
     check("Gemini: Endpunkt, Modell, Bearer", gem.get("url") == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
           and gem["body"]["model"] == "gemini-3.8-flash" and gem["auth"] == "Bearer fake-gemini-key"
           and "Du bist Friday" in gem["body"]["messages"][0]["content"])
+    check("v0.9.6 Gemini „Schnell“: reasoning_effort minimal", gem["body"].get("reasoning_effort") == "minimal")
+    open_settings(page, 300)
+    page.select_option("#set-tempo", "thorough")
+    page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
+    ask("Erklär es gründlich", 1200)
+    check("v0.9.6 Gemini „Gründlich“: kein reasoning_effort (Modell-Standard)", "reasoning_effort" not in gem["body"])
+    check("v0.9.6 Antwort-Tempo gespeichert", page.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).answerTempo") == "thorough")
+    open_settings(page, 300)
+    page.select_option("#set-tempo", "fast")
+    page.click("#settings-form button[type=submit]"); page.wait_for_timeout(300)
     open_settings(page, 300)
     page.select_option("#set-provider", "xai")
     check("xAI-Schlüssel nach Anbieterwechsel noch da", page.input_value("#set-apikey") == "xai-test-123")
@@ -781,8 +799,8 @@ with sync_playwright() as p:
     spage.click("#btn-settings"); spage.wait_for_timeout(300)
     groups = spage.eval_on_selector_all("details.set-group", "ds => ds.map(d => ({ id: d.id, open: d.open, title: d.querySelector('.grp-title').textContent, h: d.querySelector('summary').getBoundingClientRect().height }))")
     titles = [g["title"] for g in groups]
-    check("Einstellungen: 8 Gruppen in fester Reihenfolge, alle zugeklappt",
-          titles == ["Allgemein", "Sprache & Wake-Word", "Morgen-Briefing & Abend", "Gedächtnis & Notizen", "Werkzeuge & Berechtigungen",
+    check("Einstellungen: 9 Gruppen in fester Reihenfolge (neu: Aussehen), alle zugeklappt",
+          titles == ["Allgemein", "Aussehen", "Sprache & Wake-Word", "Morgen-Briefing & Abend", "Gedächtnis & Notizen", "Werkzeuge & Berechtigungen",
                      "Benachrichtigungen lesen", "Updates", "Datenschutz & Info"] and not any(g["open"] for g in groups))
     check("Einstellungen: große Tippflächen (Gruppen ≥ 56 px hoch)", all(g["h"] >= 56 for g in groups))
     check("Einstellungen: zugeklappt sind keine Einzelschalter sichtbar (keine Überladung)",
@@ -839,6 +857,100 @@ with sync_playwright() as p:
           spage.is_checked("#set-listen-open") and spage.is_checked("#set-mem-ai") and not spage.is_checked("#set-eve-news")
           and spage.input_value("#set-brief-gap") == gap_last and spage.input_value("#set-apikey") == "k-alt")
     sctx.close()
+
+    # ---------- v0.9.6 Designoptionen ----------
+    dctx = browser.new_context(viewport={"width": 412, "height": 915}, is_mobile=True, has_touch=True, service_workers="block",
+                               locale="de-DE", timezone_id="Europe/Berlin")
+    dctx.add_init_script("""
+      if (window.speechSynthesis) speechSynthesis.speak = () => {};
+      if (!localStorage.getItem('jarvis.persona')) {
+        localStorage.setItem('jarvis.persona', JSON.stringify({ name: 'Jarvis', onboarded: true }));
+        localStorage.setItem('jarvis.settings', JSON.stringify({ provider: 'gemini', apiKeys: { gemini: 'test-key' }, speak: false, briefing: { enabled: false }, evening: { enabled: false } }));
+      }
+    """)
+    dpage = dctx.new_page()
+    dpage.on("pageerror", lambda e: errors.append(f"design pageerror: {e}"))
+    dpage.goto(URL); dpage.wait_for_load_state("networkidle"); dpage.wait_for_timeout(300)
+    css = lambda name: dpage.evaluate(f"getComputedStyle(document.documentElement).getPropertyValue('{name}').trim()")
+    bodybg = lambda: dpage.evaluate("getComputedStyle(document.body).backgroundImage + '|' + getComputedStyle(document.body).backgroundColor")
+    base_bg = bodybg(); base_text = css("--text")
+    attrs = dpage.evaluate("Object.keys(document.documentElement.dataset).filter(k => ['theme','motion','display','liveText','customBg','fx','bgText'].includes(k))")
+    check("Design: Standard unverändert (keine Design-Attribute, Cyan-Akzent, alter Hintergrund, kein Effekt-Canvas)",
+          attrs == [] and css("--cyan") == "#00c8ff" and css("--accent-rgb") == "0, 200, 255" and "radial-gradient" in base_bg
+          and dpage.locator("#fx-canvas").count() == 0 and base_text == "#d8f4ff")
+    open_settings(dpage)
+    check("Design: Gruppe „Aussehen“ mit Standardwerten",
+          dpage.input_value("#set-theme") == "dark" and dpage.input_value("#set-accent") == "cyan" and dpage.input_value("#set-motion") == "normal"
+          and dpage.input_value("#set-textsize") == "normal" and dpage.input_value("#set-display") == "bubbles" and dpage.is_checked("#set-livetext")
+          and dpage.input_value("#set-bg-mode") == "default" and not any(dpage.is_checked(f"#set-fx-{k}") for k in ["particles", "waves", "glow"])
+          and dpage.locator("#set-accent option").count() >= 5)
+    check("Design: Stimme + Tonhöhe + Sprechtempo gemeinsam in „Sprache & Wake-Word“",
+          all(dpage.locator(f"#grp-speech {s}").count() == 1 for s in ["#set-voice", "#set-pitch", "#set-rate", "#btn-preview"]))
+    dpage.select_option("#set-theme", "light"); dpage.select_option("#set-accent", "violett"); dpage.select_option("#set-textsize", "large")
+    dpage.select_option("#set-display", "compact"); dpage.uncheck("#set-livetext"); dpage.select_option("#set-motion", "reduced")
+    check("Design: Vorschau sofort (Hell, Violett, Groß, Kompakt, reduzierte Bewegung)",
+          dpage.evaluate("document.documentElement.dataset.theme") == "light" and css("--cyan") == "#9b7bff" and css("--chat-scale") == "1.12"
+          and dpage.evaluate("document.documentElement.dataset.display") == "compact" and dpage.evaluate("document.documentElement.dataset.motion") == "reduced"
+          and dpage.evaluate("document.documentElement.dataset.liveText") == "off" and css("--text") == "#0b2233")
+    dpage.select_option("#set-bg-mode", "gradient")
+    dpage.evaluate("""() => { const set = (id, v) => { const e = document.querySelector(id); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); };
+                              set('#set-bg-color', '#000000'); set('#set-bg-color2', '#ffffff'); set('#set-bg-angle', '45'); }""")
+    check("Design: Farbverlauf (2 Farben + Winkel) angewendet + Kontrast-Warnung bei schwer lesbarem Verlauf",
+          "linear-gradient(45deg" in bodybg() and dpage.locator("#bg-contrast.warn").count() == 1 and dpage.is_visible("#row-bg-angle"))
+    dpage.evaluate("""() => { const e = document.querySelector('#set-bg-color2'); e.value = '#1a1a40'; e.dispatchEvent(new Event('input', { bubbles: true })); }""")
+    check("Design: dunkler Verlauf → helle Schrift, keine Warnung",
+          dpage.locator("#bg-contrast.warn").count() == 0 and dpage.evaluate("document.documentElement.dataset.bgText") == "light" and css("--text") == "#d8f4ff")
+    dpage.select_option("#set-bg-mode", "color")
+    dpage.evaluate("""() => { const e = document.querySelector('#set-bg-color'); e.value = '#f4f4f0'; e.dispatchEvent(new Event('input', { bubbles: true })); }""")
+    check("Design: einfarbig hell → Text automatisch dunkel", dpage.evaluate("document.documentElement.dataset.bgText") == "dark" and css("--text") == "#0b2233"
+          and "rgb(244, 244, 240)" in bodybg())
+    # eigenes Bild per Dateiwähler (lokal, keine Netzanfrage)
+    reqs = []
+    dpage.on("request", lambda r: reqs.append(r.url) if not r.url.startswith(("data:", "blob:")) and "127.0.0.1" not in r.url and "localhost" not in r.url else None)
+    png = dpage.evaluate("""() => { const c = document.createElement('canvas'); c.width = 64; c.height = 40; const x = c.getContext('2d');
+                                    x.fillStyle = '#fafafa'; x.fillRect(0, 0, 64, 40); return c.toDataURL('image/png').split(',')[1]; }""")
+    import base64
+    dpage.set_input_files("#set-bg-image", files=[{"name": "hell.png", "mimeType": "image/png", "buffer": base64.b64decode(png)}])
+    dpage.wait_for_timeout(600)
+    img = dpage.evaluate("JSON.parse(localStorage.getItem('jarvis.bg-image') || 'null')")
+    check("Design: eigenes Bild lokal gespeichert (verkleinertes JPEG) + angewendet + Text dunkel, ohne Netzanfrage",
+          img and img["data"].startswith("data:image/jpeg") and img["lum"] > 0.8 and dpage.input_value("#set-bg-mode") == "image"
+          and "url(" in bodybg() and dpage.evaluate("document.documentElement.dataset.bgText") == "dark" and reqs == [])
+    if reqs: print("INFO Netz:", reqs)
+    dpage.check("#set-fx-particles"); dpage.check("#set-fx-glow")
+    dpage.wait_for_timeout(200)
+    check("Design: Zier-Animation bei „Reduzierte Bewegung“ pausiert (keine Zeichenschleife)",
+          dpage.evaluate("import('./js/ui/appearance.js').then(m => m.effects.running)") is False)
+    dpage.select_option("#set-motion", "normal"); dpage.wait_for_timeout(500)
+    f1 = dpage.evaluate("import('./js/ui/appearance.js').then(m => m.effects.frames)"); dpage.wait_for_timeout(1000)
+    f2 = dpage.evaluate("import('./js/ui/appearance.js').then(m => m.effects.frames)")
+    check(f"Design: Partikel + Leuchten laufen, FPS gedeckelt ({f2 - f1}/s ≤ 31), Canvas nimmt keine Tipps an",
+          dpage.evaluate("import('./js/ui/appearance.js').then(m => m.effects.running)") is True and 5 <= f2 - f1 <= 31
+          and dpage.evaluate("getComputedStyle(document.querySelector('#fx-canvas')).pointerEvents") == "none")
+    dpage.evaluate("Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); document.dispatchEvent(new Event('visibilitychange'))")
+    check("Design: App im Hintergrund → Animation pausiert", dpage.evaluate("import('./js/ui/appearance.js').then(m => m.effects.running)") is False)
+    dpage.evaluate("Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); document.dispatchEvent(new Event('visibilitychange'))")
+    check("Design: wieder sichtbar → läuft weiter", dpage.evaluate("import('./js/ui/appearance.js').then(m => m.effects.running)") is True)
+    dpage.click(".settings-save .btn"); dpage.wait_for_timeout(300)
+    st = dpage.evaluate("JSON.parse(localStorage.getItem('jarvis.settings')).appearance")
+    check("Design: gespeichert", st["theme"] == "light" and st["accent"] == "violett" and st["background"]["mode"] == "image" and st["effects"]["particles"] is True)
+    dpage.reload(); dpage.wait_for_load_state("networkidle"); dpage.wait_for_timeout(400)
+    check("Design: nach Neustart wieder angewendet", dpage.evaluate("document.documentElement.dataset.theme") == "light" and css("--cyan") == "#9b7bff"
+          and "url(" in bodybg() and dpage.locator("#fx-canvas").count() == 1)
+    open_settings(dpage)
+    dpage.click("#btn-bg-reset"); dpage.uncheck("#set-fx-particles"); dpage.uncheck("#set-fx-glow")
+    dpage.select_option("#set-theme", "dark"); dpage.select_option("#set-accent", "cyan"); dpage.select_option("#set-textsize", "normal")
+    dpage.select_option("#set-display", "bubbles"); dpage.check("#set-livetext")
+    dpage.click(".settings-save .btn"); dpage.wait_for_timeout(300)
+    attrs = dpage.evaluate("Object.keys(document.documentElement.dataset).filter(k => ['theme','motion','display','liveText','customBg','fx','bgText'].includes(k))")
+    check("Design: „Zurücksetzen“ + Standardwerte → exakt altes Aussehen, Bild gelöscht, Canvas entfernt",
+          attrs == [] and bodybg() == base_bg and css("--cyan") == "#00c8ff" and css("--text") == base_text
+          and dpage.locator("#fx-canvas").count() == 0 and dpage.evaluate("localStorage.getItem('jarvis.bg-image')") is None)
+    # Abbrechen verwirft die Vorschau
+    open_settings(dpage); dpage.select_option("#set-theme", "light")
+    dpage.click("#btn-back"); dpage.wait_for_timeout(200)
+    check("Design: Zurück ohne Speichern verwirft die Vorschau", dpage.evaluate("document.documentElement.dataset.theme") is None)
+    dctx.close()
 
     if not URL.startswith("http://localhost"):
         page.wait_for_timeout(300)

@@ -26,6 +26,21 @@ export const DEFAULT_LISTEN_POLICY = Object.freeze({
   watchdogMs: 20000
 });
 
+/**
+ * v0.9.6 Satzende-Erkennung („Endpointing“), kürzer als die Standardwerte der Erkenner (~2 s),
+ * aber mit Puffer für Denkpausen mitten im Satz (keine abgeschnittenen Fragen):
+ *  - completeSilenceMs: Android RecognizerIntent EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS
+ *  - possiblyCompleteSilenceMs: …_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS
+ *    (Hinweise an den Erkenner – manche Geräte/Google-Versionen ignorieren sie, dann gilt deren Standard)
+ *  - webStableMs: Browser-Mikrofon – bleibt der erkannte Text so lange unverändert, wird die Erkennung
+ *    beendet (stop() liefert sofort das Endergebnis) statt auf Chromes eigene Stille-Erkennung zu warten.
+ */
+export const ENDPOINT_POLICY = Object.freeze({
+  completeSilenceMs: 1200,
+  possiblyCompleteSilenceMs: 900,
+  webStableMs: 1300
+});
+
 /** Wartezeit vor dem nächsten Start (rein, für Tests). */
 export function nextDelay({ reason, kind, silences = 0, errors = 0 }, policy = DEFAULT_LISTEN_POLICY) {
   if (reason === 'final') return policy.restartAfterFinalMs;

@@ -3,7 +3,9 @@
 // Adapter und die UI ersetzt – der Kern bleibt gleich.
 import { createStore } from './core/storage.js';
 import { loadSettings, saveSettings, PROVIDERS } from './core/settings.js';
-import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from './core/persona.js';
+import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName, effectiveRate } from './core/persona.js';
+import { createFollowUp, shouldFollowUp, normalizeFollowUpConfig, FOLLOW_UP_TIMING } from './core/follow-up.js';
+import { createWakeMatcher, isBareWake } from './core/wakeword.js';
 import { createTimerManager } from './core/timers.js';
 import { createAssistant } from './core/assistant.js';
 import { createWakeController } from './core/wake-controller.js';
@@ -29,6 +31,7 @@ import { loadReminders } from './core/reminders.js';
 await waitForBoot(globalThis);
 const _A = globalThis.__JARVIS_ADAPTERS__;
 import * as view from './ui/view.js';
+import { applyAndRemember } from './ui/appearance.js';
 import { createSettingsView } from './ui/settings-view.js';
 
 const { $ } = view;
@@ -41,6 +44,7 @@ const stt = _A?.stt ? _A.stt({ lang: 'de-DE', getMuteBeep: () => settings.wakeMu
 const device = _A?.device ? _A.device() : createWebDevice();
 console.info(`[Jarvis] Adapter: ${adapterKind(_A)}`);
 let settings = loadSettings(store);
+try { applyAndRemember(settings.appearance); } catch (e) { console.warn('[Jarvis] Design:', e); }
 let persona = loadPersona(store);
 let busy = false;
 
@@ -65,9 +69,11 @@ const wake = createWakeController({
     view.setOrbState('listening');
     view.setStatus('Ja, bitte?');
   },
-  onCommand: (text) => handleInput(text),
+  onCommand: (text) => handleInput(text, { voice: true }),
   onState: (s) => {
+    if (s === 'followup-end') { followUpUi(false); return; }
     if (busy) return;
+    if (s === 'followup') { followUpUi(true); return; }
     if (s === 'standby') { view.setOrbState('standby'); view.setStatus(`Sagen Sie „Hey ${persona.name}“ …`); }
     if (s === 'awaiting') { view.setOrbState('listening'); view.setStatus('Ja, bitte?'); }
     if (s === 'stopped' && !wake.enabled) { view.setOrbState('idle'); view.setStatus('Bereit.'); }
@@ -112,10 +118,11 @@ function showError(text) {
 const WAKE_RESUME_AFTER_TTS_MS = 700;
 let ttsActive = 0;
 async function speakTts(text, p = persona) {
+  stopFollowUp('tts'); // neue Ausgabe → Nachfrage-Fenster schließen (Jarvis hört sich nie selbst)
   ttsActive++;
   wake.pause('tts');
   try {
-    await tts.speak(text, p);
+    await tts.speak(text, { ...p, rate: effectiveRate(p?.rate) });
   } finally {
     ttsActive = Math.max(0, ttsActive - 1);
     if (!ttsActive) wake.resume('tts', { delayMs: WAKE_RESUME_AFTER_TTS_MS });
@@ -164,13 +171,81 @@ function createSentenceSpeaker(myTurn) {
 
 const openCards = new Map(); // Antwort-ID → offene Ja/Nein-Karte (für gesprochenes Ja/Nein)
 let turn = 0; // zählt Eingaben, damit eine alte Sprachausgabe keine neue stört
-async function handleInput(text) {
+async function handleInput(text, { voice = false } = {}) {
   const input = String(text || '').trim();
   if (!input || busy) return;
+  stopFollowUp('input');
   touchActivity();
   view.addMessage({ role: 'user', text: input });
   const reply = await runTurn((onDelta) => assistant.process(input, { onDelta }));
   if (reply?.settingsChanged || reply?.source === 'briefing') { settings = loadSettings(store); syncNative(); }
+  maybeFollowUp(reply, voice);
+}
+
+// ---------- v0.9.6 Nachfrage-Modus ----------
+// Nach einer per Sprache gestellten Frage und vorgelesener Antwort hört Jarvis kurz weiter zu.
+// Mit Wake-Word: dieselbe (ohnehin laufende) Erkennung, nur das Befehlsfenster wird geöffnet.
+// Ohne Wake-Word: wenige kurze Einzel-Erkennungen (FOLLOW_UP_TIMING), Ende bei Stille.
+// Start erst NACH dem Ende der Sprachausgabe, nie im Hintergrund.
+let followUpTimer = null;
+const followUp = createFollowUp({
+  listen: ({ onInterim }) => stt.listenOnce({ onInterim, muteBeep: settings.wakeMuteBeep !== false }),
+  abort: () => stt.abort(),
+  matchWake: (t) => { const m = createWakeMatcher(persona.name)(t); return { ...m, bare: isBareWake(m) }; },
+  onState: (s, info) => {
+    if (s === 'waiting') followUpUi(true);
+    else if (s === 'hearing') { view.setOrbState('listening'); view.setStatus(`„${info?.text || ''}“`); }
+    else if (s === 'ended') {
+      listening = false;
+      followUpUi(false);
+      wake.resume('followup', { delayMs: 300 });
+    }
+  },
+  onText: (t) => { handleInput(t, { voice: true }); }
+});
+
+function followUpUi(on) {
+  if (busy) return;
+  if (on) {
+    view.setOrbState('followup');
+    view.setStatus('Ich höre noch zu … einfach weitersprechen.');
+    document.body.dataset.followup = '1';
+  } else {
+    delete document.body.dataset.followup;
+    if (!listening && !ttsActive) idle();
+  }
+}
+
+function followUpActive() { return followUp.active || wake.followUp || Boolean(followUpTimer); }
+
+function stopFollowUp(reason = 'stopped') {
+  const had = followUpActive();
+  if (followUpTimer) { clearTimeout(followUpTimer); followUpTimer = null; }
+  wake.cancelFollowUp();
+  followUp.stop(reason);
+  if (had) delete document.body.dataset.followup;
+  return had;
+}
+
+function maybeFollowUp(reply, viaVoice) {
+  const spoken = Boolean(settings.speak && tts.isSupported());
+  if (!shouldFollowUp({ cfg: settings.followUp, viaVoice, spoken, hidden: document.hidden, reply, sttSupported: stt.isSupported() })) return;
+  if (busy || listening || ttsActive) return;
+  const myTurn = turn;
+  const windowMs = normalizeFollowUpConfig(settings.followUp).windowSec * 1000;
+  if (wake.enabled) {
+    // Fenster zählt ab dem Wiederanlaufen der Erkennung (nach der Nachhall-Pause)
+    wake.armFollowUp(windowMs + WAKE_RESUME_AFTER_TTS_MS);
+    if (wake.listening) followUpUi(true);
+    return;
+  }
+  followUpTimer = setTimeout(() => {
+    followUpTimer = null;
+    if (myTurn !== turn || busy || listening || ttsActive || document.hidden) return;
+    wake.pause('followup');
+    listening = true;
+    followUp.start(windowMs);
+  }, FOLLOW_UP_TIMING.startDelayMs);
 }
 
 /**
@@ -322,7 +397,7 @@ function syncNative() {
     tz: deviceTz(),
     name: persona.name,
     onboarded: Boolean(persona.onboarded),
-    voice: { voiceId: persona.voiceId || '', rate: persona.rate, pitch: persona.pitch }
+    voice: { voiceId: persona.voiceId || '', rate: effectiveRate(persona.rate), pitch: persona.pitch }
   });
 }
 
@@ -375,7 +450,7 @@ async function maybeAutoBriefing() {
     const cfg = settings.briefing;
     if ((!cfg.enabled && !settings.evening.enabled && !settings.weekly.enabled) || !persona.onboarded || busy) return;
     // „Jarvis fragen“ hat Vorrang: wer gerade fragen will, bekommt kein Briefing dazwischen (kommt beim nächsten Öffnen)
-    if (listening || Date.now() - listenRequestedAt < 5000) return;
+    if (listening || followUpActive() || Date.now() - listenRequestedAt < 5000) return;
     const nowMs = Date.now();
     const today = dayKey(nowMs);
     if (nativeBriefing) {
@@ -481,6 +556,12 @@ function onListenLaunch(launch) {
 async function onMic() {
   if (!stt.isSupported()) return view.toast('Spracherkennung wird hier nicht unterstützt. Bitte Chrome verwenden.');
   if (!window.isSecureContext) return view.toast('Das Mikrofon funktioniert nur über HTTPS.');
+  if (followUpActive()) {
+    // Antippen während der Nachfrage: Fenster schließen (ohne Wake-Word: Mikrofon direkt aus)
+    const wasListening = followUp.active;
+    stopFollowUp('tap');
+    if (wasListening) return;
+  }
   if (listening) { stt.abort(); return; }
   if (busy) return;
   tts.cancel();
@@ -493,7 +574,7 @@ async function onMic() {
     const text = await stt.listenOnce({ onInterim: (t) => view.setStatus(`„${t}“`) });
     listening = false;
     view.setMicActive(false);
-    if (text) await handleInput(text);
+    if (text) await handleInput(text, { voice: true });
     else { idle(); view.setStatus('Ich habe nichts verstanden.'); }
   } catch (e) {
     listening = false;
@@ -531,7 +612,8 @@ function greet() {
 function showSettings(open) {
   $('#view-main').classList.toggle('hidden', open);
   $('#view-settings').classList.toggle('hidden', !open);
-  if (open) settingsView.fill();
+  if (open) { stopFollowUp('settings'); settingsView.fill(); }
+  else applyAndRemember(settings.appearance); // Vorschau verwerfen bzw. Gespeichertes anwenden
 }
 
 const settingsView = createSettingsView({
@@ -622,7 +704,7 @@ function init() {
 
   // App im Hintergrund → Mikrofon freigeben; wieder sichtbar → weiter hören
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { wake.pause('hidden'); tts.cancel(); touchActivity(); syncNative(); }
+    if (document.hidden) { stopFollowUp('hidden'); wake.pause('hidden'); tts.cancel(); touchActivity(); syncNative(); }
     else { wake.resume('hidden', { delayMs: 400 }); maybeAutoBriefing(); }
   });
   // Herzschlag: solange die App sichtbar ist, gilt der Nutzer als aktiv

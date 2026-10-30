@@ -8,7 +8,11 @@
 // wieder, wenn ALLE Gründe aufgehoben sind – so kann eine verschachtelte Sprachausgabe das
 // Mikrofon nicht mitten in einer anderen Ausgabe wieder öffnen (Jarvis hört sich sonst selbst).
 // resume(grund, { delayMs }) wartet kurz (Nachhall der eigenen Stimme) und startet höchstens einmal.
-import { createWakeMatcher } from './wakeword.js';
+//
+// v0.9.6 Nachfrage-Modus: armFollowUp(ms) öffnet nach einer gesprochenen Antwort dasselbe
+// Befehlsfenster wie „Hey <Name>“ – der nächste Satz gilt ohne Namen als Befehl. Es läuft KEINE
+// zusätzliche Erkennung: genutzt wird die ohnehin aktive Wake-Word-Erkennung (nur bei offener App).
+import { createWakeMatcher, isBareWake } from './wakeword.js';
 
 export function createWakeController({
   stt, getName, onWake, onCommand, onState, onError, commandWindowMs = 8000,
@@ -21,6 +25,7 @@ export function createWakeController({
   let awaitingUntil = 0;
   let awaitTimer = null;
   let starts = 0;
+  let followUp = false; // Fenster stammt aus dem Nachfrage-Modus (nicht aus „Hey <Name>“)
   let matcher = createWakeMatcher(getName());
   let matcherName = getName();
 
@@ -33,9 +38,18 @@ export function createWakeController({
   function handleFinal(text) {
     if (!text) return;
     if (Date.now() < awaitingUntil) {
-      // Name wurde gerade gerufen → dieser Satz ist der Befehl
-      awaitingUntil = 0;
+      // Name wurde gerade gerufen (oder Nachfrage-Fenster offen) → dieser Satz ist der Befehl
       const again = currentMatcher()(text);
+      if (followUp && isBareWake(again)) {
+        // Im Nachfrage-Fenster nur „Hey <Name>“ gesagt → wie ein normaler Weckruf weiter warten
+        followUp = false;
+        armWindow(commandWindowMs);
+        onWake?.();
+        return;
+      }
+      awaitingUntil = 0;
+      followUp = false;
+      if (awaitTimer) { clearTimer(awaitTimer); awaitTimer = null; }
       onCommand(again.matched && again.command ? again.command : text);
       return;
     }
@@ -44,11 +58,24 @@ export function createWakeController({
     if (m.command.length > 1) {
       onCommand(m.command);
     } else {
-      awaitingUntil = Date.now() + commandWindowMs;
+      armWindow(commandWindowMs);
       onWake?.();
-      if (awaitTimer) clearTimer(awaitTimer);
-      awaitTimer = setTimer(() => { awaitTimer = null; if (awaitingUntil && Date.now() >= awaitingUntil) { awaitingUntil = 0; onState?.('standby'); } }, commandWindowMs + 50);
     }
+  }
+
+  function armWindow(ms) {
+    awaitingUntil = Date.now() + ms;
+    if (awaitTimer) clearTimer(awaitTimer);
+    awaitTimer = setTimer(() => {
+      awaitTimer = null;
+      if (awaitingUntil && Date.now() >= awaitingUntil) {
+        const wasFollowUp = followUp;
+        awaitingUntil = 0;
+        followUp = false;
+        if (wasFollowUp) onState?.('followup-end');
+        onState?.('standby');
+      }
+    }, ms + 50);
   }
 
   const cancelResume = () => { if (resumeTimer) { clearTimer(resumeTimer); resumeTimer = null; } };
@@ -60,7 +87,7 @@ export function createWakeController({
     let mine = null;
     mine = stt.startContinuous({
       onFinal: handleFinal,
-      onState: (s) => onState?.(s === 'listening' ? (awaitingUntil ? 'awaiting' : 'standby') : s),
+      onState: (s) => onState?.(s === 'listening' ? (awaitingUntil > Date.now() ? (followUp ? 'followup' : 'awaiting') : 'standby') : s),
       onError: (e) => {
         // Adapter hat aufgegeben: Sitzung wirklich beenden (keine verwaiste Neustart-Schleife)
         try { mine?.stop(); } catch { /* egal */ }
@@ -86,7 +113,7 @@ export function createWakeController({
     get pauseReasons() { return [...reasons]; },
     get starts() { return starts; },
     enable() { enabled = true; start(); },
-    disable() { enabled = false; awaitingUntil = 0; stop(); },
+    disable() { enabled = false; awaitingUntil = 0; followUp = false; stop(); },
     /** z. B. während Jarvis spricht oder der Mikrofon-Knopf benutzt wird */
     pause(reason = 'manual') { reasons.add(reason); stop(); },
     /** Grund aufheben; erst wenn keiner mehr übrig ist, nach delayMs wieder zuhören. */
@@ -96,6 +123,23 @@ export function createWakeController({
       cancelResume();
       if (delayMs > 0) resumeTimer = setTimer(() => { resumeTimer = null; start(); }, delayMs);
       else start();
+    },
+    get followUp() { return followUp && Date.now() < awaitingUntil; },
+    /** v0.9.6 Nachfrage-Modus: die nächsten ms gilt ein Satz ohne Namen als Befehl. */
+    armFollowUp(ms) {
+      if (!enabled) return false;
+      followUp = true;
+      armWindow(Math.max(1000, Number(ms) || 8000));
+      return true;
+    },
+    /** Nachfrage-Fenster schließen (z. B. App verlassen, Antippen). */
+    cancelFollowUp() {
+      if (!followUp) return false;
+      followUp = false;
+      awaitingUntil = 0;
+      if (awaitTimer) { clearTimer(awaitTimer); awaitTimer = null; }
+      onState?.('followup-end');
+      return true;
     },
     /** Für Tests: einen erkannten Satz direkt einspeisen */
     feed: handleFinal

@@ -60,7 +60,7 @@ FAKE = r"""
   st.bgSpeech = (on) => { st.bg = on; emit('backgroundSpeech', { speaking: on }); };
   const secure = {
     'jarvis.persona': JSON.stringify({ name: 'Jarvis', onboarded: true, voiceId: '' }),
-    'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' }, wakeWord: Boolean(CFG.wake), listenOnOpen: Boolean(CFG.listenOnOpen) })
+    'jarvis.settings': JSON.stringify({ speak: true, provider: 'gemini', apiKeys: { gemini: 'test-key' }, wakeWord: Boolean(CFG.wake), listenOnOpen: Boolean(CFG.listenOnOpen), followUp: CFG.followUp })
   };
   if (CFG.memory) secure['jarvis.memory'] = JSON.stringify({ version: 1, items: CFG.memory.map((t, i) => ({ id: 'm' + i, text: t, kategorie: 'sonstiges', quelle: 'sprache', erstellt: '2026-10-19T10:00:00.000Z', geaendert: '2026-10-19T10:00:00.000Z' })) });
   window.__secure = secure;
@@ -74,7 +74,8 @@ FAKE = r"""
       window.__nat.speak.push(a.text); st.speaking++;
       return new Promise((r) => setTimeout(() => { st.speaking--; st.speakEnds.push(performance.now()); r({}); }, CFG.speakMs || CFG.bridgeMs));
     },
-    sttStart: ({ session, muteBeep }) => {
+    sttStart: ({ session, muteBeep, completeSilenceMs, possiblyCompleteSilenceMs }) => {
+      (st.silence = st.silence || []).push([completeSilenceMs, possiblyCompleteSilenceMs]);
       st.starts++; st.times.push(performance.now()); st.mute.push(Boolean(muteBeep));
       if (st.active) st.overlaps++;
       if (st.speaking) st.startsDuringSpeak++;
@@ -495,6 +496,68 @@ with sync_playwright() as pw:
     check("App-Einstellungen: Morgen-Impuls-Schalter in „Morgen-Briefing & Abend“ (an)",
           page.locator("#grp-briefing #set-brief-impulse").count() == 1 and page.is_checked("#set-brief-impulse"))
     check("App-Einstellungen: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 11) v0.9.6 Nachfrage-Modus (ohne Wake-Word): nach der gesprochenen Antwort kurz weiter zuhören
+    b, page, logs, errs, started = run(pw, bridge_ms=20, file_ms=0, sttMode="manual", speakMs=900,
+                                        listenLaunch={"listen": True, "opened": False}, followUp={"enabled": True, "windowSec": 4})
+    page.wait_for_timeout(1200)
+    orb = lambda: page.evaluate("document.querySelector('#orb')?.dataset.state")
+    check("Nachfrage: Kachel-Start hört zu, Ende-der-Rede-Werte 1200/900 ms an die native Erkennung",
+          page.evaluate("__stt.starts") == 1 and page.evaluate("__stt.silence[0]") == [1200, 900])
+    page.evaluate("__stt.emitFinal('Wie spät ist es')")
+    page.wait_for_function("__stt.speakEnds.length >= 1", timeout=6000)
+    page.wait_for_timeout(250)
+    check("Nachfrage: während Jarvis spricht kein Mikrofon", page.evaluate("__stt.startsDuringSpeak") == 0)
+    page.wait_for_timeout(700)
+    fu = page.evaluate("({ starts: __stt.starts, t: __stt.times, e: __stt.speakEnds, active: __stt.active, mute: __stt.mute })")
+    check("Nachfrage: startet erst NACH dem Sprechen (≥ 400 ms Abstand), Orb zeigt „followup“, kein Startton",
+          fu["starts"] == 2 and fu["active"] is not None and fu["t"][-1] - fu["e"][0] >= 400 and orb() == "followup" and fu["mute"][-1] is True)
+    n0 = len(page.evaluate("window.__nat.speak"))
+    page.evaluate("__stt.emitFinal('Öffne example.com/folge')")
+    page.wait_for_function("__stt.speakEnds.length >= 2", timeout=6000)
+    sp = page.evaluate("window.__nat.speak")
+    check("Nachfrage: Folgefrage ohne „Hey Jarvis“ wird beantwortet (Karte für Website)",
+          len(sp) > n0 and page.locator(".confirm-card:not(.confirm-done)").count() >= 1 and page.evaluate("window.__nat.opened") == [])
+    page.wait_for_timeout(1000)
+    check("Nachfrage: bei offener Karte wieder kurz zuhören", page.evaluate("__stt.active") is not None and orb() == "followup")
+    page.evaluate("__stt.emitFinal('Ja')")
+    page.wait_for_timeout(1200)
+    check("Nachfrage: gesprochenes „Ja“ bestätigt die Karte (openUrl genau einmal)", page.evaluate("window.__nat.opened") == ["https://example.com/folge"])
+    page.wait_for_function("__stt.speakEnds.length >= 3", timeout=6000)
+    page.wait_for_timeout(1000)
+    s_before = page.evaluate("__stt.starts")
+    page.wait_for_timeout(4800)
+    end = page.evaluate("({ starts: __stt.starts, active: __stt.active, overlaps: __stt.overlaps })")
+    check(f"Nachfrage: Stille → nach dem Fenster (4 s) Schluss, Orb zurück, kein Daueranhören (Starts {s_before}→{end['starts']})",
+          end["active"] is None and orb() != "followup" and end["starts"] <= s_before + 2 and end["overlaps"] == 0)
+    s_idle = page.evaluate("__stt.starts"); page.wait_for_timeout(3000)
+    check("Nachfrage: danach keine weiteren Starts", page.evaluate("__stt.starts") == s_idle)
+    check("Nachfrage: keine JS-Fehler", not errs)
+    errors.extend(errs)
+    b.close()
+
+    # 12) v0.9.6 Nachfrage-Modus mit Wake-Word: Folgefrage ohne Namen, keine zusätzliche Erkennung
+    b, page, logs, errs, started = run(pw, bridge_ms=10, file_ms=0, wake=True, speakMs=800, sttMode="manual", followUp={"enabled": True, "windowSec": 4})
+    page.wait_for_function("window.__stt.starts >= 1 && window.__stt.active", timeout=5000)
+    page.evaluate("__stt.emitFinal('Hey Jarvis wie spät ist es')")
+    page.wait_for_function("__stt.speakEnds.length >= 1", timeout=6000)
+    page.wait_for_timeout(1300)
+    w = page.evaluate("({ starts: __stt.starts, during: __stt.startsDuringSpeak })")
+    check("Nachfrage+Wake: nach der Antwort Orb „followup“, dieselbe eine Erkennung (keine Extra-Starts)",
+          w["starts"] == 2 and w["during"] == 0 and orb() == "followup")
+    page.evaluate("__stt.emitFinal('wie spät ist es jetzt')")
+    page.wait_for_function("__stt.speakEnds.length >= 2", timeout=6000)
+    uhr = [t for t in page.evaluate("window.__nat.speak") if "Uhr" in t]
+    check("Nachfrage+Wake: Folgefrage ohne Namen beantwortet", len(uhr) >= 2)
+    page.wait_for_timeout(1300 + 4700)
+    check("Nachfrage+Wake: Fenster vorbei → wieder Bereitschaft (Orb „standby“)", orb() == "standby")
+    n1 = len(page.evaluate("window.__nat.speak"))
+    page.evaluate("__stt.emitFinal('wie spät ist es')")
+    page.wait_for_timeout(1200)
+    check("Nachfrage+Wake: nach dem Fenster ohne Namen keine Reaktion", len(page.evaluate("window.__nat.speak")) == n1)
+    check("Nachfrage+Wake: keine JS-Fehler", not errs)
     errors.extend(errs)
     b.close()
 

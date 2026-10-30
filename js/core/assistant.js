@@ -12,7 +12,7 @@ import { parseWhen } from './reminders.js';
 import { buildIcs } from './calendar-draft.js';
 import { undoNotes, UNDO_KEY as NOTE_UNDO_KEY, UNDO_MS as NOTE_UNDO_MS } from './notes.js';
 import { eventRemindersCommand, normalizeEventRemindersConfig } from './event-reminders.js';
-import { loadSettings, saveSettings, resolveProvider } from './settings.js';
+import { loadSettings, saveSettings, resolveAIConfig } from './settings.js';
 import { loadPersona } from './persona.js';
 import { createDefaultRegistry, tryLocalTool, runToolLoop } from './tools/index.js';
 import { createLocalTransport, makeMsgEvent, makeDeltaEvent, newId } from './realtime/index.js';
@@ -232,7 +232,7 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       impulse = pick.text;
     }
     const ir = impulse ? createImpulseRelay(relay, impulse) : null;
-    const pcfg = resolveProvider(settings);
+    const pcfg = resolveAIConfig(settings);
     let text = '';
     let source = 'briefing';
     if (pcfg.apiKey) {
@@ -413,7 +413,7 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       }
 
       // 3) KI mit Tool-Schleife
-      const cfg = resolveProvider(loadSettings(store));
+      const cfg = resolveAIConfig(loadSettings(store));
       if (!cfg.apiKey && recent) {
         const fu = recent.kind === 'weekly' ? weeklyFollowUp(input, recent.facts)
           : recentEvening ? eveningFollowUp(input, recent.facts) : localFollowUp(input, recent.facts);

@@ -9,6 +9,14 @@ export const DEFAULT_PERSONA = Object.freeze({
 });
 
 const KEY = 'persona';
+
+/** v0.9.6: Regler „Sprechtempo“ (Sprache & Wake-Word). Ältere gespeicherte Werte werden beim Sprechen begrenzt. */
+export const SPEECH_RATE = Object.freeze({ min: 0.8, max: 1.5, step: 0.05, default: 1.0 });
+export function effectiveRate(rate) {
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return SPEECH_RATE.default;
+  return Math.round(Math.min(SPEECH_RATE.max, Math.max(SPEECH_RATE.min, n)) * 100) / 100;
+}
 const clamp = (n, min, max, fb) => (Number.isFinite(+n) ? Math.min(max, Math.max(min, +n)) : fb);
 
 /** Bereinigt einen Namen: Leerzeichen trimmen, max. 30 Zeichen, Fallback "Jarvis". */

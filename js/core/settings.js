@@ -5,6 +5,11 @@ import { DEFAULT_EVENING, normalizeEveningConfig } from './briefing/evening-conf
 import { DEFAULT_WEEKLY, normalizeWeeklyConfig } from './briefing/weekly-config.js';
 import { DEFAULT_EVENT_REMINDERS, normalizeEventRemindersConfig } from './event-reminders.js';
 import { DEFAULT_PREFS, normalizePrefs } from './prefs.js';
+import { DEFAULT_FOLLOW_UP, normalizeFollowUpConfig } from './follow-up.js';
+import { DEFAULT_APPEARANCE, normalizeAppearance } from './appearance.js';
+
+/** v0.9.6 Antwort-Tempo: 'fast' = minimales Nachdenken (Standard), 'thorough' = Modell-Standard. */
+export const ANSWER_TEMPOS = Object.freeze(['fast', 'thorough']);
 
 export const PROVIDERS = Object.freeze({
   xai: {
@@ -56,7 +61,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   weekly: DEFAULT_WEEKLY, // v0.9.3: Wochenrückblick sonntags (ersetzt dann die Abendzusammenfassung)
   eventReminders: DEFAULT_EVENT_REMINDERS, // v0.9.4: Termin-Hinweise vor Kalender-Terminen (nur Android-App)
   memoryToAI: true, // Gedächtnis-Einträge mit an die KI senden (abschaltbar)
-  prefs: DEFAULT_PREFS
+  prefs: DEFAULT_PREFS,
+  answerTempo: 'fast', // v0.9.6: Antwort-Tempo (Schnell = wenig Nachdenken bei Gemini)
+  followUp: DEFAULT_FOLLOW_UP, // v0.9.6: Nachfrage-Modus (nach der Antwort kurz weiter zuhören)
+  appearance: DEFAULT_APPEARANCE // v0.9.6: Designoptionen (Standard = bisheriges Aussehen)
 });
 
 const KEY = 'settings';
@@ -76,7 +84,10 @@ export function loadSettings(store) {
     weekly: normalizeWeeklyConfig(s.weekly),
     eventReminders: normalizeEventRemindersConfig(s.eventReminders),
     memoryToAI: typeof s.memoryToAI === 'boolean' ? s.memoryToAI : DEFAULT_SETTINGS.memoryToAI,
-    prefs: normalizePrefs(s.prefs)
+    prefs: normalizePrefs(s.prefs),
+    answerTempo: ANSWER_TEMPOS.includes(s.answerTempo) ? s.answerTempo : DEFAULT_SETTINGS.answerTempo,
+    followUp: normalizeFollowUpConfig(s.followUp),
+    appearance: normalizeAppearance(s.appearance)
   };
 }
 
@@ -84,6 +95,11 @@ export function saveSettings(store, changes) {
   const next = { ...loadSettings(store), ...changes };
   store.set(KEY, next);
   return next;
+}
+
+/** KI-Konfiguration inkl. Antwort-Tempo (für askAI*). resolveProvider bleibt unverändert. */
+export function resolveAIConfig(settings) {
+  return { ...resolveProvider(settings), tempo: ANSWER_TEMPOS.includes(settings?.answerTempo) ? settings.answerTempo : 'fast' };
 }
 
 /** Liefert { baseUrl, apiKey, model } für den aktiven Anbieter. */

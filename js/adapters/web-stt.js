@@ -1,9 +1,12 @@
 // SpeechToText-Adapter (Web Speech API: SpeechRecognition, de-DE).
 // Schnittstelle:
 //   isSupported(): boolean
-//   listenOnce({onInterim}): Promise<string>    – ein Satz (Mikrofon-Knopf)
+//   listenOnce({onInterim, stableMs}): Promise<string>    – ein Satz (Mikrofon-Knopf, Nachfrage)
+//       v0.9.6: bleibt der erkannte Text stableMs unverändert, endet die Erkennung (schnelleres Satzende)
 //   startContinuous({onFinal, onInterim, onState, onError}) → {stop()}
 //       – Dauerhören für das Wake-Word, startet bei Abbruch automatisch neu.
+
+import { ENDPOINT_POLICY } from '../core/listen-loop.js';
 
 const Recognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition)
@@ -36,7 +39,7 @@ export function createWebSTT({ lang = 'de-DE' } = {}) {
   return {
     isSupported: () => Boolean(Recognition),
 
-    listenOnce({ onInterim } = {}) {
+    listenOnce({ onInterim, stableMs = ENDPOINT_POLICY.webStableMs } = {}) {
       return new Promise((resolve, reject) => {
         if (!Recognition) return reject(new Error('Spracherkennung wird von diesem Browser nicht unterstützt.'));
         stopActive();
@@ -44,6 +47,8 @@ export function createWebSTT({ lang = 'de-DE' } = {}) {
         active = r;
         let finalText = '';
         let lastInterim = '';
+        let stableTimer = null;
+        const clearStable = () => { if (stableTimer) { clearTimeout(stableTimer); stableTimer = null; } };
         r.onresult = (e) => {
           let interim = '';
           for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -53,13 +58,20 @@ export function createWebSTT({ lang = 'de-DE' } = {}) {
           }
           lastInterim = interim || lastInterim;
           onInterim?.(finalText + interim);
+          // Satzende: Text eine Weile unverändert → stop() liefert sofort das Endergebnis
+          clearStable();
+          if (stableMs > 0 && (finalText + interim).trim()) {
+            stableTimer = setTimeout(() => { stableTimer = null; if (active === r) { try { r.stop(); } catch { /* egal */ } } }, stableMs);
+          }
         };
         r.onerror = (e) => {
           if (e.error === 'no-speech' || e.error === 'aborted') return; // → onend liefert ''
+          clearStable();
           active = null;
           reject(new Error(STT_ERRORS[e.error] || `Spracherkennungsfehler: ${e.error}`));
         };
         r.onend = () => {
+          clearStable();
           if (active === r) active = null;
           resolve((finalText || lastInterim).trim());
         };

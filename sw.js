@@ -1,6 +1,6 @@
 // Service Worker: speichert die App-Dateien, damit Jarvis schnell startet
 // und installierbar ist. Bei Änderungen an den Dateien VERSION erhöhen!
-const VERSION = 'jarvis-v17';
+const VERSION = 'jarvis-v18';
 const APP_SHELL = [
   './',
   './index.html',
@@ -56,6 +56,9 @@ const APP_SHELL = [
   './js/core/briefing/weekly-config.js',
   './js/core/briefing/weekly.js',
   './js/core/briefing/impulse.js',
+  './js/core/follow-up.js',
+  './js/core/appearance.js',
+  './js/ui/appearance.js',
   './js/core/event-reminders.js',
   './js/core/app-match.js',
   './js/core/calendar-draft.js',

@@ -7,7 +7,7 @@
  * exponentielles Warten nach Fehlern, Abbruch mit Hinweis nach wiederholten Fehlern).
  * Die Erlaubnis fürs Mikrofon fragt weiterhin das SpeechRecognition-Plugin ab.
  */
-import { createListenLoop } from '../js/core/listen-loop.js';
+import { createListenLoop, ENDPOINT_POLICY } from '../js/core/listen-loop.js';
 
 const SR = () => globalThis.Capacitor?.Plugins?.SpeechRecognition;
 const J = () => globalThis.Capacitor?.Plugins?.JarvisNative;
@@ -47,14 +47,20 @@ export function createNativeEngine({ lang = 'de-DE', getMuteBeep = () => false, 
   };
 
   return {
-    async start(h) {
+    async start(h, { muteBeep } = {}) {
       const plugin = J();
       if (!plugin?.sttStart) { const e = new Error(STT_ERRORS.unavailable); e.kind = 'fatal'; throw e; }
       await ensureListener();
       const id = `${prefix}${Date.now().toString(36)}-${++seq}`;
       current = { id, h };
       try {
-        await plugin.sttStart({ session: id, language: lang, partial: true, muteBeep: Boolean(getMuteBeep()) });
+        // v0.9.6: kürzere Satzende-Erkennung (Hinweise an den Android-Erkenner, siehe ENDPOINT_POLICY)
+        await plugin.sttStart({
+          session: id, language: lang, partial: true,
+          muteBeep: Boolean(muteBeep === undefined ? getMuteBeep() : muteBeep),
+          completeSilenceMs: ENDPOINT_POLICY.completeSilenceMs,
+          possiblyCompleteSilenceMs: ENDPOINT_POLICY.possiblyCompleteSilenceMs
+        });
       } catch (e) {
         if (current?.id === id) current = null;
         const msg = String(e?.message || e);
@@ -93,7 +99,7 @@ export function createNativeSTT({ lang = 'de-DE', getMuteBeep = () => true } = {
   return {
     isSupported: () => Boolean(J()?.sttStart),
 
-    async listenOnce({ onInterim } = {}) {
+    async listenOnce({ onInterim, muteBeep } = {}) {
       if (!J()?.sttStart) throw new Error(STT_ERRORS.unavailable);
       await ensurePermission();
       return new Promise((resolve, reject) => {
@@ -108,7 +114,7 @@ export function createNativeSTT({ lang = 'de-DE', getMuteBeep = () => true } = {
           onEnd: (info) => finish(() => (info.reason === 'silence' || !info.kind || info.kind !== 'fatal'
             ? resolve(last.trim())
             : reject(new Error(info.message || STT_ERRORS.unavailable))))
-        }).catch((e) => finish(() => reject(e)));
+        }, { muteBeep: Boolean(muteBeep) }).catch((e) => finish(() => reject(e)));
       });
     },
 
