@@ -1,12 +1,14 @@
 // Einstellungsseite: Formular befüllen, auslesen, Buttons verdrahten.
 import { $, fillVoiceSelect, toast, renderKeyHint } from './view.js';
 import { PROVIDERS, loadSettings, saveSettings, resolveProvider } from '../core/settings.js';
-import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName } from '../core/persona.js';
+import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName, effectiveRate } from '../core/persona.js';
 import { askAI, listModels } from '../core/ai.js';
 import { loadNotes } from '../core/skills.js';
 import { loadMemory, addMemory, updateMemory, removeMemory, clearMemory, migrateNotes, exportMemory, importMemory, KATEGORIE_LABELS } from '../core/memory.js';
 import { PREF_OPTIONS, PREF_LABELS } from '../core/prefs.js';
 import { LISTEN_GUIDE } from '../core/listen-launch.js';
+import { ACCENTS, DEFAULT_APPEARANCE, normalizeAppearance } from '../core/appearance.js';
+import { applyAppearance, storeBgImageFromFile, clearBgImage, loadBgImage, contrastInfo } from './appearance.js';
 import { EVENT_LEAD_OPTIONS, normalizeEventRemindersConfig } from '../core/event-reminders.js';
 import { GAP_OPTIONS, LATEST_OPTIONS, RESSORTS, RESSORT_IDS, loadBriefingState, resolveCoords, normalizeBriefingConfig, EVENING_START_OPTIONS, normalizeEveningConfig, WEEKLY_HOUR_OPTIONS, normalizeWeeklyConfig } from '../core/briefing/index.js';
 
@@ -16,6 +18,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     apikey: $('#set-apikey'), modelSelect: $('#set-model-select'), modelCustom: $('#set-model-custom'), rowCustomModel: $('#row-custom-model'),
     name: $('#set-name'), voice: $('#set-voice'), rate: $('#set-rate'), pitch: $('#set-pitch'),
     outRate: $('#out-rate'), outPitch: $('#out-pitch'), speak: $('#set-speak'), wake: $('#set-wake'), wakeMute: $('#set-wake-mute'), listenOpen: $('#set-listen-open'),
+    tempo: $('#set-tempo'), followUp: $('#set-followup'), followUpSec: $('#set-followup-sec'),
     testResult: $('#test-result'), notes: $('#notes-view')
   };
   // Formularwerte pro Anbieter zwischenspeichern, damit Umschalten nichts verliert
@@ -93,12 +96,16 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     const p = loadPersona(store);
     showProvider(draft.provider);
     f.name.value = p.name;
-    f.rate.value = p.rate; f.outRate.textContent = (+p.rate).toFixed(1);
+    f.rate.value = effectiveRate(p.rate); f.outRate.textContent = effectiveRate(p.rate).toFixed(2);
     f.pitch.value = p.pitch; f.outPitch.textContent = (+p.pitch).toFixed(1);
     f.speak.checked = draft.speak;
     f.wake.checked = draft.wakeWord;
     f.wakeMute.checked = draft.wakeMuteBeep;
     f.listenOpen.checked = draft.listenOnOpen;
+    f.tempo.value = draft.answerTempo;
+    f.followUp.checked = draft.followUp.enabled;
+    f.followUpSec.value = String(draft.followUp.windowSec);
+    fillLook(draft.appearance);
     f.notes.classList.add('hidden');
     fillMemory(draft);
     fillBriefing(draft.briefing);
@@ -108,6 +115,70 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     renderExact();
     refreshVoices();
   }
+
+  // ---------- v0.9.6 Aussehen ----------
+  const lk = {
+    theme: $('#set-theme'), accent: $('#set-accent'), motion: $('#set-motion'), textSize: $('#set-textsize'),
+    display: $('#set-display'), liveText: $('#set-livetext'), bgMode: $('#set-bg-mode'), bgColor: $('#set-bg-color'),
+    bgColor2: $('#set-bg-color2'), bgAngle: $('#set-bg-angle'), outAngle: $('#out-bg-angle'), bgImage: $('#set-bg-image'),
+    rowColors: $('#row-bg-colors'), rowColor2: $('#lbl-bg-color2'), rowAngle: $('#row-bg-angle'), rowImage: $('#row-bg-image'),
+    contrast: $('#bg-contrast'), reset: $('#btn-bg-reset'),
+    fx: { particles: $('#set-fx-particles'), waves: $('#set-fx-waves'), glow: $('#set-fx-glow') }
+  };
+  lk.accent.replaceChildren(...Object.entries(ACCENTS).map(([id, a]) => new Option(a.label, id)));
+
+  function readLook() {
+    return normalizeAppearance({
+      theme: lk.theme.value, accent: lk.accent.value, motion: lk.motion.value, textSize: lk.textSize.value,
+      display: lk.display.value, liveText: lk.liveText.checked,
+      background: { mode: lk.bgMode.value, color: lk.bgColor.value, color2: lk.bgColor2.value, angle: +lk.bgAngle.value },
+      effects: Object.fromEntries(Object.entries(lk.fx).map(([k, el]) => [k, el.checked]))
+    });
+  }
+  function renderLookRows(a) {
+    const m = a.background.mode;
+    lk.rowColors.classList.toggle('hidden', m !== 'color' && m !== 'gradient');
+    lk.rowColor2.classList.toggle('hidden', m !== 'gradient');
+    lk.rowAngle.classList.toggle('hidden', m !== 'gradient');
+    lk.rowImage.classList.toggle('hidden', m !== 'image');
+    lk.outAngle.textContent = `${a.background.angle}°`;
+    const c = contrastInfo(a);
+    lk.contrast.classList.toggle('warn', Boolean(c && !c.ok));
+    if (!c) lk.contrast.textContent = m === 'image' ? 'Noch kein Bild gewählt.' : '';
+    else if (c.ok) lk.contrast.textContent = `Lesbarkeit gut (Kontrast ${String(c.ratio).replace('.', ',')} : 1) – Textfarbe wird automatisch angepasst (${c.text === 'dark' ? 'dunkel' : 'hell'}).`;
+    else lk.contrast.textContent = `⚠️ Text könnte schwer lesbar sein (Kontrast nur ${String(c.ratio).replace('.', ',')} : 1, empfohlen ab 4,5 : 1). Bitte hellere oder dunklere Farben wählen.`;
+  }
+  function previewLook() { const a = readLook(); renderLookRows(a); applyAppearance(a); }
+  function fillLook(a0) {
+    const a = normalizeAppearance(a0);
+    lk.theme.value = a.theme; lk.accent.value = a.accent; lk.motion.value = a.motion; lk.textSize.value = a.textSize;
+    lk.display.value = a.display; lk.liveText.checked = a.liveText;
+    lk.bgMode.value = a.background.mode; lk.bgColor.value = a.background.color; lk.bgColor2.value = a.background.color2;
+    lk.bgAngle.value = String(a.background.angle);
+    for (const [k, el] of Object.entries(lk.fx)) el.checked = a.effects[k];
+    lk.bgImage.value = '';
+    renderLookRows(a);
+  }
+  for (const el of [lk.theme, lk.accent, lk.motion, lk.textSize, lk.display, lk.liveText, lk.bgMode, lk.bgColor, lk.bgColor2, lk.bgAngle, ...Object.values(lk.fx)]) {
+    el.addEventListener(el.type === 'range' || el.type === 'color' ? 'input' : 'change', previewLook);
+  }
+  lk.bgImage.addEventListener('change', async () => {
+    const file = lk.bgImage.files?.[0];
+    if (!file) return;
+    try {
+      await storeBgImageFromFile(file);
+      lk.bgMode.value = 'image';
+      previewLook();
+      toast('Bild übernommen (nur auf diesem Gerät gespeichert).');
+    } catch (e) { toast(e.message); }
+  });
+  lk.reset.addEventListener('click', () => {
+    const d = DEFAULT_APPEARANCE.background;
+    lk.bgMode.value = d.mode; lk.bgColor.value = d.color; lk.bgColor2.value = d.color2; lk.bgAngle.value = String(d.angle);
+    lk.bgImage.value = '';
+    clearBgImage();
+    previewLook();
+  });
 
   // ---------- Morgen-Briefing ----------
   const b = {
@@ -295,7 +366,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     stashProvider(shown); // Werte des alten Anbieters sichern
     showProvider(f.provider.value);
   });
-  f.rate.addEventListener('input', () => { f.outRate.textContent = (+f.rate.value).toFixed(1); });
+  f.rate.addEventListener('input', () => { f.outRate.textContent = (+f.rate.value).toFixed(2); });
   f.pitch.addEventListener('input', () => { f.outPitch.textContent = (+f.pitch.value).toFixed(1); });
 
   $('#btn-togglekey').addEventListener('click', () => {
@@ -368,6 +439,9 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       wakeWord: f.wake.checked,
       wakeMuteBeep: f.wakeMute.checked,
       listenOnOpen: f.listenOpen.checked,
+      answerTempo: f.tempo.value,
+      followUp: { enabled: f.followUp.checked, windowSec: +f.followUpSec.value },
+      appearance: readLook(),
       briefing: readBriefing(),
       evening: readEvening(),
       weekly: readWeekly(),
@@ -375,6 +449,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       memoryToAI: m.ai.checked,
       prefs: { antwortlaenge: m.len.value, anrede: m.anrede.value, humor: m.humor.value }
     });
+    if (settings.appearance?.background?.mode !== 'image' && loadBgImage()) clearBgImage(); // ungenutztes Bild nicht behalten
     const persona = savePersona(store, currentPersonaFromForm());
     toast('Gespeichert.');
     onSaved({ settings, persona });

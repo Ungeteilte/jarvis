@@ -56,7 +56,7 @@
     <form id="settings-form" class="settings-form" autocomplete="off">
       <p class="hint settings-intro">Tippen Sie auf einen Bereich, um ihn auf- oder zuzuklappen.</p>
       <details class="set-group" id="grp-general">
-        <summary><span class="grp-icon" aria-hidden="true">⚙️</span><span class="grp-text"><span class="grp-title">Allgemein</span><span class="grp-sub">KI-Anbieter, Schlüssel, Name, Stimme</span></span></summary>
+        <summary><span class="grp-icon" aria-hidden="true">⚙️</span><span class="grp-text"><span class="grp-title">Allgemein</span><span class="grp-sub">KI-Anbieter, Schlüssel, Antwort-Tempo, Name</span></span></summary>
         <div class="grp-body">
           <fieldset>
             <legend>KI-Anbieter</legend>
@@ -86,39 +86,134 @@
             <label id="row-custom-model" class="hidden">Eigenes Modell
               <input id="set-model-custom" type="text" placeholder="Modellname eingeben" spellcheck="false" autocomplete="off">
             </label>
+            <label>Antwort-Tempo
+              <select id="set-tempo">
+                <option value="fast">Schnell (Standard)</option>
+                <option value="thorough">Gründlich</option>
+              </select>
+            </label>
+            <p class="hint">„Schnell“ lässt Gemini nur kurz nachdenken – Antworten kommen deutlich früher. „Gründlich“ nutzt die volle Denkzeit des Modells.</p>
             <p id="key-hint" class="hint"></p>
             <p class="hint">🔒 Der Schlüssel wird nur auf diesem Gerät gespeichert (localStorage) und direkt an den gewählten Anbieter gesendet.</p>
             <button id="btn-test" type="button" class="btn">Verbindung testen</button>
             <p id="test-result" class="hint"></p>
           </fieldset>
           <fieldset>
-            <legend>Name &amp; Stimme</legend>
+            <legend>Name &amp; Vorlesen</legend>
             <label>Name des Assistenten
               <input id="set-name" type="text" maxlength="30" placeholder="Jarvis" spellcheck="false">
             </label>
             <p class="hint">Der Name ist auch das Wake-Word: „Hey <span class="name-ref">Jarvis</span>“.</p>
-            <label>Stimme
-              <select id="set-voice"><option value="">Automatisch (beste deutsche Stimme)</option></select>
-            </label>
-            <label>Sprechtempo <output id="out-rate">1.0</output>
-              <input id="set-rate" type="range" min="0.5" max="2" step="0.1" value="1">
-            </label>
-            <label>Tonhöhe <output id="out-pitch">1.0</output>
-              <input id="set-pitch" type="range" min="0" max="2" step="0.1" value="1">
-            </label>
-            <button id="btn-preview" type="button" class="btn">▶ Vorhören</button>
             <label class="switch"><input id="set-speak" type="checkbox"> Antworten vorlesen</label>
           </fieldset>
         </div>
       </details>
+      <details class="set-group" id="grp-look">
+        <summary><span class="grp-icon" aria-hidden="true">🎨</span><span class="grp-text"><span class="grp-title">Aussehen</span><span class="grp-sub">Design, Farben, Hintergrund, Animationen</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="look-fieldset">
+            <legend>Design</legend>
+            <label>Farbschema
+              <select id="set-theme">
+                <option value="dark">Dunkel (Standard)</option>
+                <option value="light">Hell</option>
+                <option value="system">Wie das Gerät (System)</option>
+              </select>
+            </label>
+            <label>Akzentfarbe
+              <select id="set-accent"></select>
+            </label>
+            <label>Orb-Animation
+              <select id="set-motion">
+                <option value="normal">Normal (Standard)</option>
+                <option value="calm">Ruhig</option>
+                <option value="reduced">Reduzierte Bewegung (keine Animationen)</option>
+              </select>
+            </label>
+            <label>Textgröße im Chat
+              <select id="set-textsize">
+                <option value="small">Klein</option>
+                <option value="normal">Normal (Standard)</option>
+                <option value="large">Groß</option>
+                <option value="xlarge">Sehr groß</option>
+              </select>
+            </label>
+            <label>Antwort-Darstellung
+              <select id="set-display">
+                <option value="bubbles">Sprechblasen (Standard)</option>
+                <option value="compact">Kompakt (Liste)</option>
+              </select>
+            </label>
+            <label class="switch"><input id="set-livetext" type="checkbox"> Antwort live mitlesen, während sie entsteht</label>
+          </fieldset>
+          <fieldset id="bg-fieldset">
+            <legend>Hintergrund</legend>
+            <label>Art
+              <select id="set-bg-mode">
+                <option value="default">Standard (Jarvis-Design)</option>
+                <option value="color">Einfarbig</option>
+                <option value="gradient">Farbverlauf</option>
+                <option value="image">Eigenes Bild</option>
+              </select>
+            </label>
+            <div id="row-bg-colors" class="color-row hidden">
+              <label>Farbe 1 <input id="set-bg-color" type="color" value="#0a1828"></label>
+              <label id="lbl-bg-color2">Farbe 2 <input id="set-bg-color2" type="color" value="#3a1f5d"></label>
+            </div>
+            <label id="row-bg-angle" class="hidden">Verlaufswinkel <output id="out-bg-angle">160°</output>
+              <input id="set-bg-angle" type="range" min="0" max="359" step="1" value="160">
+            </label>
+            <div id="row-bg-image" class="hidden">
+              <label>Bild wählen <input id="set-bg-image" type="file" accept="image/*"></label>
+              <p class="hint">Das Bild bleibt auf diesem Gerät (verkleinert gespeichert) und wird nirgendwohin hochgeladen.</p>
+            </div>
+            <p id="bg-contrast" class="hint contrast-hint"></p>
+            <button id="btn-bg-reset" type="button" class="btn small">Hintergrund zurücksetzen</button>
+          </fieldset>
+          <fieldset id="fx-fieldset">
+            <legend>Zier-Animationen</legend>
+            <label class="switch"><input id="set-fx-particles" type="checkbox"> Schwebende Partikel</label>
+            <label class="switch"><input id="set-fx-waves" type="checkbox"> Wellen am unteren Rand</label>
+            <label class="switch"><input id="set-fx-glow" type="checkbox"> Leuchten hinter dem Orb</label>
+            <p class="hint">Standardmäßig aus. Laufen nur bei geöffneter App (max. 30 Bilder/s) und pausieren bei „Reduzierte Bewegung“ oder wenn das Gerät weniger Bewegung wünscht.</p>
+          </fieldset>
+          <p class="hint">Änderungen sind sofort als Vorschau sichtbar und werden mit „Speichern“ übernommen.</p>
+        </div>
+      </details>
       <details class="set-group" id="grp-speech">
-        <summary><span class="grp-icon" aria-hidden="true">🎙️</span><span class="grp-text"><span class="grp-title">Sprache &amp; Wake-Word</span><span class="grp-sub">Wake-Word, Startton, Schnell fragen</span></span></summary>
+        <summary><span class="grp-icon" aria-hidden="true">🎙️</span><span class="grp-text"><span class="grp-title">Sprache &amp; Wake-Word</span><span class="grp-sub">Stimme, Sprechtempo, Nachfrage, Wake-Word, Schnell fragen</span></span></summary>
         <div class="grp-body">
           <fieldset id="wake-fieldset">
             <legend>Wake-Word</legend>
             <label class="switch"><input id="set-wake" type="checkbox"> Wake-Word „Hey <span class="name-ref">Jarvis</span>“ (nur bei offener App)</label>
             <label class="switch native-only"><input id="set-wake-mute" type="checkbox"> Startton der Spracherkennung beim Wake-Word unterdrücken</label>
             <p class="hint native-only">Dafür werden System- und (wenn gerade nichts läuft) Medienton beim Start der Erkennung etwa eine Sekunde stummgeschaltet und danach wiederhergestellt. Benachrichtigungen und Klingelton bleiben unberührt; bei „Nicht stören“ oder während eines Anrufs passiert nichts.</p>
+          </fieldset>
+          <fieldset id="talk-fieldset">
+            <legend>Stimme &amp; Gespräch</legend>
+            <label class="switch"><input id="set-followup" type="checkbox"> Nachfrage-Modus: nach einer Antwort kurz weiter zuhören</label>
+            <label>Zuhören nach der Antwort
+              <select id="set-followup-sec">
+                <option value="4">4 Sekunden</option>
+                <option value="6">6 Sekunden</option>
+                <option value="8">8 Sekunden (Standard)</option>
+                <option value="10">10 Sekunden</option>
+                <option value="12">12 Sekunden</option>
+                <option value="15">15 Sekunden</option>
+              </select>
+            </label>
+            <p class="hint">Haben Sie per Sprache gefragt, hört <span class="name-ref">Jarvis</span> nach dem Vorlesen der Antwort noch kurz zu – Sie können ohne „Hey <span class="name-ref">Jarvis</span>“ weitersprechen oder „Ja“/„Nein“ zu einer offenen Rückfrage sagen. Der leuchtende Ring zeigt das an; bei Stille endet es von selbst. Nur bei geöffneter App, nie im Hintergrund.</p>
+            <p class="hint">Stimme: Die Auswahl zeigt die auf diesem Gerät installierten Stimmen (Android: Google-Sprachausgabe bzw. Samsung-TTS).</p>
+            <label>Stimme
+              <select id="set-voice"><option value="">Automatisch (beste deutsche Stimme)</option></select>
+            </label>
+            <label>Tonhöhe <output id="out-pitch">1.0</output>
+              <input id="set-pitch" type="range" min="0" max="2" step="0.1" value="1">
+            </label>
+            <label>Sprechtempo <output id="out-rate">1.00</output>
+              <input id="set-rate" type="range" min="0.8" max="1.5" step="0.05" value="1">
+            </label>
+            <button id="btn-preview" type="button" class="btn">▶ Vorhören</button>
           </fieldset>
           <fieldset id="listen-fieldset" class="listen-box">
             <legend>Schnell fragen</legend>
@@ -329,7 +424,7 @@
       <div class="settings-save">
         <button type="submit" class="btn primary">Speichern</button>
       </div>
-      <p id="app-version" class="hint center">Jarvis 0.9.5</p>
+      <p id="app-version" class="hint center">Jarvis 0.9.6</p>
     </form>
   </section>
 

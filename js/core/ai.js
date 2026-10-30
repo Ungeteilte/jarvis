@@ -153,6 +153,54 @@ export async function fetchModelIds(cfg, opts = {}) {
  * - bei Gemini: Fallback-Liste zusätzlich aus /models (3.x Flash bevorzugt)
  * - bei 404 „no longer available“: /models holen und verfügbares Modell nehmen
  */
+// ---------- v0.9.6 Antwort-Tempo (Nachdenk-Steuerung) ----------
+// Gemini 3 denkt ohne Angabe standardmäßig ausführlich (langsam). Über den OpenAI-kompatiblen
+// Endpunkt steuert reasoning_effort das: laut Google-Doku (ai.google.dev/gemini-api/docs/openai)
+// entspricht 'minimal' bei Gemini 3 Flash / 3.1 Flash-Lite thinking_level 'minimal';
+// 'none' gibt es nur für 2.5-Modelle (bei Gemini 3 nicht abschaltbar).
+// Lehnt ein Modell den Wert ab (HTTP 400), wird stufenweise 'low' bzw. gar nichts gesendet und das
+// pro Basis-URL+Modell gemerkt. Andere Anbieter (xAI, OpenAI, eigene URL) bekommen nichts Neues.
+export const REASONING_FAST = 'minimal';
+const REASONING_CHAIN = ['minimal', 'low'];
+const REASONING_REJECT_RE = /reasoning|thinking|effort|budget/i;
+const reasoningDowngrades = new Map(); // `${baseUrl}|${model}` → 'low' | null (= nicht senden)
+
+export function reasoningEffortFor(cfg) {
+  const providerId = cfg?.providerId || cfg?.id;
+  if (providerId !== 'gemini') return undefined;
+  if (cfg?.tempo === 'thorough') return undefined; // Gründlich: Modell-Standard
+  return REASONING_FAST;
+}
+
+export function isReasoningRejected(status, detail) {
+  return status === 400 && REASONING_REJECT_RE.test(String(detail || ''));
+}
+
+function reasoningKey(cfg, model) { return `${cfg?.baseUrl || ''}|${model}`; }
+
+/** Wendet eine gemerkte Herabstufung an (mutiert body). */
+function applyReasoningMemory(cfg, body) {
+  if (!body.reasoning_effort) return;
+  const k = reasoningKey(cfg, body.model);
+  if (!reasoningDowngrades.has(k)) return;
+  const v = reasoningDowngrades.get(k);
+  if (v) body.reasoning_effort = v; else delete body.reasoning_effort;
+}
+
+/** Nächste Stufe nach Ablehnung; merkt sie sich. true = erneut versuchen. */
+function downgradeReasoning(cfg, body) {
+  const cur = body.reasoning_effort;
+  if (!cur) return false;
+  const i = REASONING_CHAIN.indexOf(cur);
+  const next = i >= 0 && i + 1 < REASONING_CHAIN.length ? REASONING_CHAIN[i + 1] : null;
+  reasoningDowngrades.set(reasoningKey(cfg, body.model), next);
+  if (next) body.reasoning_effort = next; else delete body.reasoning_effort;
+  return true;
+}
+
+/** Nur für Tests: gemerkte Herabstufungen vergessen. */
+export function resetReasoningMemory() { reasoningDowngrades.clear(); }
+
 export async function requestWithRetry(cfg, path, opts = {}) {
   const {
     retries = 2,
@@ -198,6 +246,7 @@ export async function requestWithRetry(cfg, path, opts = {}) {
   for (let mi = 0; mi < models.length; mi++) {
     const model = models[mi];
     const attemptBody = { ...body, model };
+    applyReasoningMemory(cfg, attemptBody);
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const data = await requestFn(cfg, path, { ...rest, body: attemptBody });
@@ -205,6 +254,12 @@ export async function requestWithRetry(cfg, path, opts = {}) {
       } catch (e) {
         lastErr = e;
         if (e.code !== 'http') throw e;
+
+        // v0.9.6: Nachdenk-Stufe abgelehnt → schwächer bzw. ohne erneut (zählt nicht als Versuch)
+        if (isReasoningRejected(e.status, e.detail) && downgradeReasoning(cfg, attemptBody)) {
+          attempt--;
+          continue;
+        }
 
         // 404: Modell weg → /models neu laden und Kette ersetzen (einmal)
         if (isGoneModelError(e.status, e.detail) && !goneHandled && providerId === 'gemini') {
@@ -241,6 +296,8 @@ export async function requestWithRetry(cfg, path, opts = {}) {
  */
 export async function askAIRaw(cfg, messages, opts = {}) {
   const body = { model: cfg.model, messages };
+  const effort = reasoningEffortFor(cfg);
+  if (effort) body.reasoning_effort = effort;
   if (opts.tools?.length) {
     body.tools = opts.tools;
     body.tool_choice = opts.tool_choice || 'auto';
@@ -450,6 +507,8 @@ export async function askAIStream(cfg, messages, opts = {}) {
     return { ...out, streamed: false };
   }
   const body = { model: cfg.model, messages };
+  const effort = reasoningEffortFor(cfg);
+  if (effort) body.reasoning_effort = effort;
   if (opts.tools?.length) {
     body.tools = opts.tools;
     body.tool_choice = opts.tool_choice || 'auto';

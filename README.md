@@ -199,6 +199,23 @@ auf der Karte – sie zeigt Domain **und** vollständige Adresse – „Ja“ ti
 für die letzte Karte, nur einmal). Nur `http(s)`, keine Adressen mit Anmeldedaten (`name@…`); Warnung bei `http`,
 internationalen Domains (`xn--…`) und IP-Adressen. Links in KI-Antworten werden nur als Text angezeigt, nie geöffnet.
 
+## ⚡ Schneller & flüssiger, Nachfrage-Modus, Designoptionen (ab v0.9.6)
+
+**Antwort-Tempo** (Einstellungen → Allgemein): „Schnell (Standard)“ schickt bei Gemini `reasoning_effort: "minimal"` über die OpenAI-kompatible Schnittstelle (wenig Nachdenken = schnellere Antwort). Lehnt ein Modell den Wert ab (HTTP 400), probiert Jarvis automatisch `low` und dann ganz ohne Angabe – und merkt sich das je Modell. „Gründlich“ schickt nichts (Modell-Standard). Andere Anbieter (xAI, OpenAI, eigene) bekommen keinen neuen Parameter.
+
+**Gesprochener Stil:** Jarvis antwortet kurz, im Gesprächston und ohne Listen/Markdown – außer Sie bitten ausdrücklich um Details.
+
+**Sprechtempo** (Sprache & Wake-Word → Stimme & Gespräch): 0,8–1,5 (Standard 1,0), gilt für Browser- und Android-Sprachausgabe. Dort stehen jetzt auch Stimme und Tonhöhe.
+
+**Ende-der-Rede-Erkennung:** Android bekommt 1200 ms Stille als „fertig“ und 900 ms als „vermutlich fertig“ (begrenzt auf 600–3000 ms; manche Erkennungsdienste ignorieren diese Hinweise). Im Browser beendet Jarvis die Aufnahme, wenn sich der erkannte Text 1,3 s nicht mehr ändert.
+
+**Nachfrage-Modus** (Standard an, 8 s, einstellbar 4–15 s): Nachdem Jarvis eine *gesprochene* Frage beantwortet hat, hört er kurz weiter zu – ohne „Hey Jarvis“ bzw. Ihren Assistenten-Namen. Das Mikrofon startet erst, wenn die Sprachausgabe beendet ist (+0,45 s, mit Wake-Word +0,7 s), der Orb leuchtet währenddessen grün („Ich höre noch zu …“). Stille beendet das Fenster; offene Bestätigungskarten lassen sich per „Ja“/„Nein“ beantworten. Kein Daueranhören: nur bei geöffneter App, nach getippten Fragen oder Briefings gibt es keine Nachfrage. Mit aktivem Wake-Word wird dieselbe laufende Erkennung genutzt (keine zusätzliche).
+
+**Aussehen** (neue Gruppe „Aussehen“, alle Standardwerte = bisheriges Design):
+- Farbschema Dunkel/Hell/System, 6 Akzentfarben, Orb-Animation Normal/Ruhig/Reduzierte Bewegung, Chat-Textgröße, Darstellung Sprechblasen/Kompakt, Live-Text beim Entstehen ein/aus.
+- Hintergrund: Einfarbig (Farbwähler), Farbverlauf (2 Farben + Winkel) oder eigenes Bild (bleibt verkleinert nur auf dem Gerät, kein Upload), „Hintergrund zurücksetzen“. Die Textfarbe passt sich automatisch an (WCAG-Kontrast); bei schlecht lesbaren Kombinationen erscheint eine Warnung.
+- Zier-Animationen (Partikel, Wellen, Orb-Leuchten), einzeln schaltbar, Standard aus; Canvas mit max. 30 Bildern/s, pausiert im Hintergrund und bei reduzierter Bewegung.
+
 ## ⚠️ Einschränkungen
 
 - **Wake-Word nur bei offener App und eingeschaltetem Bildschirm.** Browser dürfen im Hintergrund oder bei
