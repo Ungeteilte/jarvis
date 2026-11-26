@@ -1,5 +1,6 @@
 // OpenAI-kompatible Tool-Schleife: sendet tools, führt tool_calls aus, sendet Ergebnisse zurück.
 import { askAIRaw, askAIStream } from '../ai.js';
+import { fenceUntrusted } from '../guard.js';
 import { resultToText } from './registry.js';
 
 const MAX_ROUNDS = 4;
@@ -28,7 +29,7 @@ export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, f
       if (m.role === 'assistant' && m.tool_calls) {
         return { role: 'assistant', content: m.text || null, tool_calls: m.tool_calls };
       }
-      return { role: m.role, content: m.text };
+      return { role: m.role, content: m.untrusted ? fenceUntrusted(m.untrusted, m.text) : m.text };
     })
   ];
 

@@ -286,11 +286,7 @@ test('Zaun-Ausbruch im Archivtext löst nichts aus', async () => {
   assert.doesNotMatch(fenced, /evil\.example/);
 });
 
-test('Version 0.11.0, versionCode 16, Backup bleibt aus, Changelog auf Deutsch', () => {
-  assert.match(readFileSync('index.html', 'utf8'), /Jarvis 0\.11\.0/);
-  const gradle = readFileSync('android/android/app/build.gradle', 'utf8');
-  assert.match(gradle, /versionCode 16/);
-  assert.match(gradle, /versionName "0\.11\.0"/);
+test('Version 0.11.0 bleibt im Changelog, Backup bleibt aus', () => {
   const log = readFileSync('CHANGELOG.md', 'utf8');
   assert.match(log, /## 0\.11\.0 – Strukturiertes Archiv/);
   assert.match(log, /Was ist noch offen/);

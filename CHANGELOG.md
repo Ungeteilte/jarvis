@@ -1,5 +1,21 @@
 # Änderungen
 
+## 0.12.0 – Foto, PDF und Video
+
+Sie können ein Foto, ein PDF oder ein kurzes Video auswählen. Jarvis schickt die Datei erst an Google Gemini, nachdem Sie auf einer Karte Ja gesagt haben. Auf der Karte steht, dass Google den Inhalt sieht.
+
+Fotos und PDFs dürfen höchstens 4 MB groß sein, Videos höchstens 8 MB und 45 Sekunden. Größere oder andere Dateien lehnt Jarvis ab. Er verkleinert sie nicht.
+
+Die Beschreibung ist nur eine Auskunft. Steht in der Datei ein Befehl, führt Jarvis ihn nicht aus. Nichts landet von selbst im Archiv. Wenn etwas behalten werden soll, fragt eine Karte nach.
+
+Das geht in der Android-App und in der Browser-App, aber nur mit einem Gemini-Schlüssel in den Einstellungen. Ohne Schlüssel sagt Jarvis das klar und schickt die Datei nirgendwohin.
+
+Ist das kostenlose Gemini-Kontingent voll oder die Datei für Gemini zu groß, erklärt Jarvis das in normalen Worten.
+
+Im Hintergrund läuft dafür nichts Neues.
+
+Android: versionCode 17.
+
 ## 0.11.0 – Strukturiertes Archiv
 
 Zusätzlich zum Gedächtnis und zu den kurzen Notizen gibt es ein Archiv mit den Fächern Termine, Notizen, Projekte, Ideen, Entscheidungen, Todos, Verläufe, Lektionen und Wissen.

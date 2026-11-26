@@ -51,6 +51,26 @@ public class FileLimitsTest {
     }
 
     @Test
+    public void mediaLimitsRejectLargeAndForeignFiles() {
+        assertNull(FileLimits.checkMedia("foto.jpg", "image/jpeg", 4 * 1024 * 1024, -1));
+        assertNotNull(FileLimits.checkMedia("foto.jpg", "image/jpeg", 4 * 1024 * 1024 + 1, -1));
+        assertNull(FileLimits.checkMedia("brief.pdf", "application/pdf", 1000, -1));
+        assertNotNull(FileLimits.checkMedia("brief.pdf", "", 4 * 1024 * 1024 + 1, -1));
+        assertNull(FileLimits.checkMedia("clip.mp4", "video/mp4", 1000, 45_000));
+        assertNotNull(FileLimits.checkMedia("clip.mp4", "video/mp4", 1000, 45_001));
+        assertNotNull(FileLimits.checkMedia("clip.mp4", "video/mp4", 1000, -1));
+        assertNotNull(FileLimits.checkMedia("clip.mp4", "video/mp4", 8 * 1024 * 1024 + 1, 10_000));
+        assertNotNull(FileLimits.checkMedia("virus.exe", "application/octet-stream", 20, -1));
+        assertNotNull(FileLimits.checkMedia("bild.svg", "image/svg+xml", 20, -1));
+        assertNotNull(FileLimits.checkMedia("ton.mp3", "audio/mpeg", 20, -1));
+        assertNotNull(FileLimits.checkMedia("foto.jpg", "application/pdf", 20, -1));
+        assertNotNull(FileLimits.checkMedia("leer.png", "image/png", 0, -1));
+        String big = FileLimits.checkMedia("gross.jpg", "image/jpeg", 5 * 1024 * 1024, -1);
+        assertTrue(big.contains("verkleinere nichts"));
+        assertTrue(FileLimits.checkMedia("lang.mp4", "video/mp4", 1000, 90_000).contains("kürze es nicht"));
+    }
+
+    @Test
     public void cacheCleanupAfterTenMinutes() throws Exception {
         File dir = Files.createTempDirectory("share").toFile();
         File old = new File(dir, "alt.txt");

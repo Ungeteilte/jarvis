@@ -21,6 +21,8 @@ import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.provider.AlarmClock;
 import android.provider.Settings;
+import android.media.MediaMetadataRetriever;
+import android.util.Base64;
 import android.util.Log;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.UtteranceProgressListener;
@@ -71,6 +73,7 @@ import com.jarvis.assistant.briefing.CalendarReader;
 import android.os.PowerManager;
 
 import java.io.File;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -662,6 +665,103 @@ public class JarvisNativePlugin extends Plugin {
             ret.put("message", err);
         }
         call.resolve(ret);
+    }
+
+    /**
+     * v0.12: Foto, PDF oder kurzes Video wählen.
+     * Keine dauerhafte URI-Berechtigung, kein Hochladen, kein Verkleinern.
+     * Zu große Dateien werden nicht in den Speicher gelesen.
+     */
+    @PluginMethod
+    public void openMediaDocument(PluginCall call) {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*")
+            .putExtra(Intent.EXTRA_MIME_TYPES, FileLimits.MEDIA_PICK_MIMES);
+        try {
+            startActivityForResult(call, i, "onOpenMediaDocument");
+        } catch (ActivityNotFoundException e) {
+            JSObject r = new JSObject();
+            r.put("ok", false);
+            r.put("message", "Auf diesem Gerät gibt es keinen Datei-Dialog.");
+            call.resolve(r);
+        }
+    }
+
+    @ActivityCallback
+    private void onOpenMediaDocument(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        JSObject ret = new JSObject();
+        Uri uri = result.getResultCode() == Activity.RESULT_OK && result.getData() != null
+            ? result.getData().getData() : null;
+        if (uri == null) {
+            ret.put("ok", false);
+            ret.put("cancelled", true);
+            call.resolve(ret);
+            return;
+        }
+        android.content.ContentResolver cr = getContext().getContentResolver();
+        String name = displayName(uri, "datei");
+        long size = -1;
+        try (android.database.Cursor c = cr.query(uri, new String[] { android.provider.OpenableColumns.SIZE }, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) size = c.getLong(0);
+        } catch (Exception ignored) {}
+        String mime = cr.getType(uri);
+        String kind = FileLimits.mediaKind(name, mime);
+        long durationMs = -1;
+        if ("video".equals(kind)) durationMs = videoDurationMs(uri);
+        String err = FileLimits.checkMedia(name, mime, size, "video".equals(kind) ? durationMs : -1);
+        byte[] data = null;
+        if (err == null) {
+            int cap = FileLimits.maxMediaBytes(kind);
+            try (java.io.InputStream in = cr.openInputStream(uri)) {
+                if (in == null) throw new java.io.IOException("leer");
+                data = readCapped(in, cap);
+                if (data == null) err = FileLimits.tooBigMessage(kind, (long) cap + 1);
+                else if (data.length == 0) err = FileLimits.MEDIA_EMPTY_MSG;
+            } catch (Exception e) {
+                err = "Die Datei konnte nicht gelesen werden.";
+            }
+        }
+        if (err != null || data == null) {
+            ret.put("ok", false);
+            ret.put("message", err != null ? err : "Die Datei konnte nicht gelesen werden.");
+            call.resolve(ret);
+            return;
+        }
+        ret.put("ok", true);
+        ret.put("name", name);
+        ret.put("mime", mime == null ? "" : mime);
+        ret.put("size", data.length);
+        ret.put("base64", Base64.encodeToString(data, Base64.NO_WRAP));
+        if ("video".equals(kind)) ret.put("durationSec", durationMs / 1000.0);
+        call.resolve(ret);
+    }
+
+    /** Länge lokal aus den Metadaten, ohne die Datei abzuspielen oder zu verkleinern. */
+    private long videoDurationMs(Uri uri) {
+        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
+        try {
+            mmr.setDataSource(getContext(), uri);
+            String d = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            if (d == null) return -1;
+            long ms = Long.parseLong(d);
+            return ms > 0 ? ms : -1;
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            try { mmr.release(); } catch (Exception ignored) {}
+        }
+    }
+
+    /** Liest höchstens max Bytes. Ein Byte mehr → null (zu groß, nichts behalten). */
+    private static byte[] readCapped(java.io.InputStream in, int max) throws java.io.IOException {
+        byte[] buf = new byte[max + 1];
+        int len = 0;
+        int n;
+        while (len < buf.length && (n = in.read(buf, len, buf.length - len)) > 0) len += n;
+        if (len > max) return null;
+        return Arrays.copyOf(buf, len);
     }
 
     /** Teilen: Datei kurz in cache/share/, Teilen-Menü über den FileProvider; nach 10 Minuten gelöscht. */

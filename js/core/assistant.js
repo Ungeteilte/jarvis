@@ -7,7 +7,10 @@ import { buildSystemPrompt } from './prompt.js';
 import { handleMemoryCommand } from './memory-commands.js';
 import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
 import { handleArchiveCommand } from './archive-commands.js';
-import { loadArchive, addArchive, updateArchive, buildArchiveFile, promptArchive } from './archive.js';
+import { loadArchive, addArchive, updateArchive, buildArchiveFile, promptArchive, checkArchiveText } from './archive.js';
+import {
+  acceptMedia, cleanDescription, confirmSendCard, describeWithGemini, dropHeld, geminiMediaConfig, kindLabel, takeHeld
+} from './media.js';
 import { voiceAnswer, CONFIRM_TTL_MS } from './confirm-voice.js';
 import { pickChoice } from './app-match.js';
 import { buildExport } from './files.js';
@@ -171,6 +174,19 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         }
         return add('assistant', 'Termine eintragen geht hier leider nicht.', { source: 'system', unsupported: true });
       }
+      case 'sendMedia': {
+        // v0.12: erst jetzt, nach der Ja-Karte, geht die eine Datei an Google Gemini.
+        const file = takeHeld(action.id);
+        if (!file) return add('assistant', 'Die Datei ist nicht mehr bereit. Bitte wählen Sie sie erneut. Es wurde nichts gesendet.', { source: 'system' });
+        const cfg = geminiMediaConfig(loadSettings(store));
+        if (!cfg.ok) return add('assistant', cfg.message, { source: 'system' });
+        try {
+          const description = await describeWithGemini(cfg, file, { fetchFn });
+          return finishMedia(file, description);
+        } catch (e) {
+          return add('assistant', e.message || 'Gemini konnte die Datei nicht lesen.', { source: 'system', error: true });
+        }
+      }
       case 'launchApp': {
         // App aus der Karte starten – nativ nur Pakete aus der Launcher-Liste (LaunchPolicy)
         if (!device?.launchApp) return add('assistant', 'Apps öffnen geht nur in der Android-App.', { source: 'system', unsupported: true });
@@ -184,6 +200,32 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       default:
         return add('assistant', 'Diese Aktion kann ich leider nicht ausführen.', { source: 'system' });
     }
+  }
+
+  /** Beschreibung anzeigen, für die KI eingezäunt lassen, Archiv nur als Vorschlagskarte. */
+  function finishMedia(file, description) {
+    const clean = cleanDescription(description);
+    const snippet = clean.replace(/\s+/g, ' ').trim().slice(0, 500);
+    const chk = snippet ? checkArchiveText(snippet) : { ok: false };
+    const meta = { source: 'ai', untrusted: 'datei', toolResults: [{ name: 'understand_media' }] };
+    let text = `Zu „${file.name}“ (${kindLabel(file.kind)}):\n${clean}\n\nIch habe nichts gespeichert.`;
+    if (chk.ok) {
+      text += ' Wenn der Auszug ins Archiv soll (Fach Wissen), tippen Sie auf Ja.';
+      meta.confirm = {
+        title: 'Auszug ins Archiv legen?',
+        detail: `Fach Wissen, Quelle Datei: ${chk.text}`,
+        action: { type: 'addArchive', text: chk.text, fach: 'wissen', quelle: 'datei' }
+      };
+    } else {
+      text += ' Ins Archiv lege ich daraus nichts.';
+    }
+    return add('assistant', text, meta);
+  }
+
+  function declineMedia(id) {
+    dropHeld(id);
+    if (pending?.action?.type === 'sendMedia' && pending.action.id === id) pending = null;
+    return add('assistant', 'Alles klar. Die Datei bleibt bei Ihnen. An Google geht nichts.', { source: 'system' });
   }
 
   function ctx() {
@@ -295,8 +337,35 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       return runAction(action);
     },
     cancelAction() {
+      if (pending?.action?.type === 'sendMedia') dropHeld(pending.action.id);
       pending = null;
       return add('assistant', 'Alles klar, ich breche ab.', { source: 'system' });
+    },
+    /** Nein auf der Google-Karte: Bytes weg, nichts gesendet. */
+    declineMedia,
+    /** Foto-Knopf: Datei ist schon gewählt (Tipp), jetzt nur noch die Google-Karte. */
+    async reviewPickedMedia(filePromise) {
+      add('user', 'Foto, PDF oder Video');
+      const cfg = geminiMediaConfig(loadSettings(store));
+      if (!cfg.ok) return add('assistant', cfg.message, { source: 'system' });
+      if (!device?.pickMediaFile) return add('assistant', 'Fotos, PDFs und Videos gehen hier leider nicht.', { source: 'system', unsupported: true });
+      let picked;
+      try { picked = await filePromise; } catch {
+        return add('assistant', 'Die Datei konnte nicht gelesen werden.', { source: 'system', error: true });
+      }
+      if (!picked?.ok) {
+        if (picked?.cancelled) return add('assistant', 'Keine Datei gewählt.', { source: 'system' });
+        return add('assistant', picked?.message || 'Die Datei konnte nicht gelesen werden.', { source: 'system' });
+      }
+      const accepted = acceptMedia(picked);
+      if (!accepted.ok) return add('assistant', accepted.message, { source: 'system' });
+      const card = confirmSendCard(accepted);
+      return add('assistant', card.message, { source: 'tool', tool: 'understand_media', confirm: card.confirm });
+    },
+    /** Hinweis, ohne eine Datei zu öffnen (zum Beispiel ohne Gemini-Schlüssel). */
+    explainMedia(message) {
+      add('user', 'Foto, PDF oder Video');
+      return add('assistant', message, { source: 'system' });
     },
     /** Offene Karte (für Tests/UI). */
     pendingConfirm: () => (pending ? { ...pending } : null),
@@ -330,9 +399,15 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
           return r;
         }
         if (ans === 'no') {
+          if (p.action?.type === 'sendMedia') {
+            const r = declineMedia(p.action.id);
+            r.confirmResolved = p.msgId;
+            return r;
+          }
           const r = add('assistant', 'Alles klar, ich breche ab.', { source: 'system', confirmResolved: p.msgId });
           return r;
         }
+        if (p.action?.type === 'sendMedia') dropHeld(p.action.id);
       }
       let seq = 0;
       const relay = (d) => {

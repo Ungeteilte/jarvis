@@ -39,6 +39,7 @@
     <section id="chat" class="chat" aria-live="polite"></section>
 
     <form id="composer" class="composer" autocomplete="off">
+      <button id="btn-media" type="button" class="icon-btn" aria-label="Foto, PDF oder Video" title="Foto, PDF oder Video">🖼️</button>
       <input id="input" type="text" placeholder="Nachricht …" enterkeyhint="send" aria-label="Nachricht">
       <button id="btn-send" type="submit" class="icon-btn send" aria-label="Senden">➤</button>
       <button id="btn-mic" type="button" class="mic" aria-label="Spracheingabe">🎙️</button>
@@ -390,6 +391,7 @@
           <fieldset id="tools-fieldset">
             <legend>Werkzeuge &amp; Berechtigungen</legend>
             <p class="hint">Lesen geht sofort. Alles, was nach außen wirkt (Apps öffnen, Links, Dateien teilen, Kalender), fragt vorher nach – erst recht, nachdem Jarvis Inhalte aus dem Netz oder einer Datei gelesen hat.</p>
+            <p class="hint">Fotos, PDFs und kurze Videos (Fotos und PDFs bis 4 MB, Videos bis 8 MB und 45 Sekunden) beschreibt Jarvis nur mit einem Gemini-Schlüssel. Vor dem Senden steht auf der Karte, dass Google den Inhalt sieht. Ohne Schlüssel passiert nichts, und es wird kein anderer Anbieter verwendet. Nichts wird automatisch hochgeladen oder ins Archiv gelegt.</p>
             <p class="hint"><strong>Wecker &amp; Erinnerungen</strong></p>
             <p id="exact-status" class="hint native-only" aria-live="polite"></p>
             <div class="row wrap native-only">
@@ -469,7 +471,7 @@
       <div class="settings-save">
         <button type="submit" class="btn primary">Speichern</button>
       </div>
-      <p id="app-version" class="hint center">Jarvis 0.11.0</p>
+      <p id="app-version" class="hint center">Jarvis 0.12.0</p>
     </form>
   </section>
 

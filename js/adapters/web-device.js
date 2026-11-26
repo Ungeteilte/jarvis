@@ -1,6 +1,7 @@
 // Plattform-Adapter für den Browser (Android Chrome). Später durch
 // native Android-Implementierungen ersetzen – gleiche Methodennamen.
 // Jede Methode liefert { ok, message?, ... } bzw. { ok:false, unsupported:true }.
+import { checkMedia, maxBytes, resolveMediaType } from '../core/media.js';
 
 let torchStream = null;
 let torchTrack = null;
@@ -151,6 +152,45 @@ export function createWebDevice({ openExternal = (url) => { window.location.href
     /** Datei-Auswahl im Browser braucht einen Tipp → das Werkzeug zeigt vorher eine Karte. */
     filePickNeedsGesture: true,
 
+    /**
+     * Foto, PDF oder kurzes Video. Zu große Dateien und zu lange Videos werden nicht eingelesen
+     * und nicht verkleinert. Der Upload passiert nicht hier.
+     */
+    pickMediaFile() {
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.pdf,application/pdf,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov';
+        input.style.display = 'none';
+        let done = false;
+        const finish = (r) => { if (done) return; done = true; input.remove(); resolve(r); };
+        input.addEventListener('cancel', () => finish({ ok: false, cancelled: true }));
+        input.addEventListener('change', async () => {
+          const f = input.files?.[0];
+          if (!f) return finish({ ok: false, cancelled: true });
+          const meta = { name: f.name, mime: f.type || '', size: f.size };
+          const kind = resolveMediaType(f.name, f.type || '');
+          if (!kind.ok) return finish({ ok: false, message: kind.message });
+          // Größe zuerst: zu große Dateien werden nicht gelesen und Videos nicht erst abgespielt.
+          if (!(f.size > 0) || f.size > maxBytes(kind.kind)) {
+            const rejected = checkMedia({ ...meta, durationSec: kind.kind === 'video' ? 1 : undefined });
+            return finish({ ok: false, message: rejected.message || 'Die Datei konnte nicht gelesen werden.' });
+          }
+          let durationSec;
+          if (kind.kind === 'video') durationSec = await videoDuration(f);
+          const checked = checkMedia({ ...meta, durationSec });
+          if (!checked.ok) return finish({ ok: false, message: checked.message });
+          try {
+            finish({ ok: true, name: f.name, mime: f.type || '', size: f.size, durationSec, base64: await blobToBase64(f) });
+          } catch {
+            finish({ ok: false, message: 'Die Datei konnte nicht gelesen werden.' });
+          }
+        });
+        document.body.appendChild(input);
+        input.click();
+      });
+    },
+
     /** <input type=file>: liest nur Textdateien bis 256 KB (größere werden gar nicht erst gelesen). */
     pickTextFile() {
       return new Promise((resolve) => {
@@ -226,4 +266,42 @@ export function createWebDevice({ openExternal = (url) => { window.location.href
       }
     }
   };
+}
+
+/** Nur Metadaten, kein Abspielen und kein Hochladen. */
+function videoDuration(file) {
+  return new Promise((resolve) => {
+    let url = '';
+    try { url = URL.createObjectURL(file); } catch { resolve(null); return; }
+    const v = document.createElement('video');
+    v.preload = 'metadata';
+    v.muted = true;
+    let settled = false;
+    const finish = (sec) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { URL.revokeObjectURL(url); } catch { /* egal */ }
+      v.removeAttribute('src');
+      try { v.load(); } catch { /* egal */ }
+      resolve(sec);
+    };
+    const timer = setTimeout(() => finish(null), 4000);
+    v.onloadedmetadata = () => finish(Number.isFinite(v.duration) ? v.duration : null);
+    v.onerror = () => finish(null);
+    v.src = url;
+  });
+}
+
+function blobToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result || '');
+      const i = s.indexOf(',');
+      resolve(i >= 0 ? s.slice(i + 1) : '');
+    };
+    r.onerror = () => reject(new Error('lesen'));
+    r.readAsDataURL(file);
+  });
 }
