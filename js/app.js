@@ -3,6 +3,7 @@
 // Adapter und die UI ersetzt – der Kern bleibt gleich.
 import { createStore } from './core/storage.js';
 import { loadSettings, saveSettings, PROVIDERS } from './core/settings.js';
+import { geminiMediaConfig } from './core/media.js';
 import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName, effectiveRate } from './core/persona.js';
 import { createFollowUp, shouldFollowUp, normalizeFollowUpConfig, FOLLOW_UP_TIMING } from './core/follow-up.js';
 import { createWakeMatcher, isBareWake } from './core/wakeword.js';
@@ -337,6 +338,11 @@ function attachCard(reply) {
     },
     onNo: async () => {
       openCards.delete(cardId);
+      const action = reply.confirm?.action;
+      if (action?.type === 'sendMedia') {
+        await after(assistant.declineMedia(action.id));
+        return;
+      }
       await after(assistant.cancelAction());
     }
   }));
@@ -686,6 +692,21 @@ function init() {
   view.renderHistory(history);
   if (!history.length) view.addMessage({ role: 'assistant', text: greet() });
 
+  $('#btn-media')?.addEventListener('click', () => {
+    if (busy) return;
+    const cfg = geminiMediaConfig(loadSettings(store));
+    view.addMessage({ role: 'user', text: 'Foto, PDF oder Video' });
+    if (!cfg.ok || typeof device.pickMediaFile !== 'function') {
+      const message = typeof device.pickMediaFile !== 'function'
+        ? 'Fotos, PDFs und Videos gehen hier leider nicht.'
+        : cfg.message;
+      runTurn(() => Promise.resolve(assistant.explainMedia(message)));
+      return;
+    }
+    // Der Tipp öffnet den Datei-Dialog sofort. Hochgeladen wird erst nach der Google-Karte.
+    const picked = device.pickMediaFile();
+    runTurn(() => assistant.reviewPickedMedia(picked));
+  });
   $('#composer').addEventListener('submit', (e) => {
     e.preventDefault();
     const v = $('#input').value;

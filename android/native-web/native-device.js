@@ -221,6 +221,11 @@ export function createNativeDevice() {
       const r = await jcall('openTextDocument', {}, { ok: false, message: 'Datei-Auswahl nicht verfügbar.' });
       return r || { ok: false, message: 'Datei-Auswahl nicht verfügbar.' };
     },
+    /** v0.12: Foto, PDF oder kurzes Video. Der native Dialog lädt nichts hoch. */
+    async pickMediaFile() {
+      const r = await jcall('openMediaDocument', {}, { ok: false, message: 'Datei-Auswahl nicht verfügbar.' });
+      return r || { ok: false, message: 'Datei-Auswahl nicht verfügbar.' };
+    },
     async shareTextFile({ name, mime, text }) {
       const r = await jcall('shareTextFile', { name, mime, text }, { ok: false, message: 'Teilen nicht verfügbar.' });
       return r || { ok: false, message: 'Teilen nicht verfügbar.' };

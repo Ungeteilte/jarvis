@@ -226,6 +226,16 @@ Grenzen: 60 Einträge pro Fach, 3000 Zeichen pro Eintrag. Passwörter, PINs, IBA
 
 Speicher: derselbe Speicher wie bisher (Android verschlüsselt, `allowBackup="false"` bleibt). In den Einstellungen unter „Archiv“ sichern Sie eine JSON- oder Textdatei und können die JSON-Datei wiederherstellen. API-Schlüssel sind nicht in der Datei; die tragen Sie wie bisher neu ein. Dafür läuft kein zusätzlicher Hintergrunddienst.
 
+## 📷 Foto, PDF und Video (ab v0.12.0)
+
+Tippen Sie auf das Bild-Symbol oder sagen Sie zum Beispiel „Schau dir dieses Foto an“, „Lies mir dieses PDF vor“ oder „Was ist auf dem Video?“. Jarvis lässt Sie eine Datei wählen und fragt danach auf einer Karte, ob sie an Google Gemini darf. Erst nach Ja wird diese eine Datei geschickt. Auf der Karte steht, dass Google den Inhalt sieht.
+
+Grenzen: Fotos (JPEG, PNG, WebP, GIF, HEIC) und PDFs höchstens 4 MB, Videos (MP4, WebM, MOV) höchstens 8 MB und 45 Sekunden. Was darüber liegt oder ein anderer Dateityp ist, wird abgelehnt. Jarvis verkleinert nichts.
+
+Die Antwort ist eine Beschreibung oder ein Auszug und gilt als Daten. Ein Befehl in der Datei startet nichts. Ins Archiv kommt nur, was Sie auf einer weiteren Karte bestätigen.
+
+Nur mit einem Gemini-Schlüssel in den Einstellungen, in der Android-App und in der Browser-App. Ohne Schlüssel sagt Jarvis das und weicht nicht auf einen anderen Anbieter aus. Ist das kostenlose Kontingent aufgebraucht, kommt eine klare Meldung. Es gibt keinen neuen Hintergrunddienst.
+
 ## 🛡️ Schutzzaun (ab v0.10.0)
 
 Jarvis nimmt Befehle nur von Ihnen an: was Sie in der App tippen oder sprechen.
