@@ -88,7 +88,7 @@ export async function runToolLoop({ cfg, systemPrompt, history, registry, ctx, f
       messages.push({
         role: 'tool',
         tool_call_id: tc.id || `call_${toolResults.length}`,
-        content: resultToText(result)
+        content: resultToText(result, { forModel: true })
       });
     }
 

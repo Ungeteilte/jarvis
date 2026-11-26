@@ -1,4 +1,5 @@
-import { gate, markOrigin } from './risk.js';
+import { gate, markOrigin, riskOf } from './risk.js';
+import { fenceUntrusted, isOwnerChannel } from '../guard.js';
 
 // Browser-freie Werkzeug-Registry. Jedes Werkzeug hat:
 //   name, description (DE), parameters (JSON-Schema),
@@ -41,12 +42,17 @@ export function createToolRegistry(tools = []) {
       const t = byName.get(name);
       if (!t) return { ok: false, message: `Unbekanntes Werkzeug: ${name}.` };
       try {
+        // v0.10: Ein fremder Kanal (Mail, Datei, Webseite, …) darf nichts auslösen außer Lesen.
+        // Auch confirmed hilft nicht – bestätigen kann nur der Besitzer in der App.
+        if (ctx?.channel && !isOwnerChannel(ctx.channel) && riskOf(t) !== 'lesen') {
+          return { ok: false, blocked: true, message: 'Das kommt nicht von Ihnen. Diesen Schritt führe ich nicht aus.' };
+        }
         // Zentrale Regel (v0.9 W0): Risikoklasse + Taint entscheiden, ob eine Karte nötig ist.
         const g = gate(t, args || {}, ctx || {});
         if (g && !g.selfConfirm) return g;
         // confirms='self' unter Taint: Werkzeug baut seine eigene Karte (z. B. mit Paketname)
         const runCtx = g?.selfConfirm ? { ...ctx, mustConfirm: true } : ctx;
-        const r = await t.execute(args || {}, runCtx);
+        let r = await t.execute(args || {}, runCtx);
         if (g?.selfConfirm && r?.ok !== false && !r?.needsConfirm) {
           // Vertrag gebrochen: Werkzeug hat trotz mustConfirm ohne Karte gehandelt – laut melden (Test fängt das)
           return { ok: false, blocked: true, message: `Werkzeug „${name}“ hat ohne Bestätigung gehandelt.` };
@@ -56,6 +62,9 @@ export function createToolRegistry(tools = []) {
           ctx.turn.external = true;
           (ctx.turn.sources ||= new Set()).add(t.sourceLabel || 'fremden Quellen');
         }
+        if (t.externalData && r && typeof r === 'object') {
+          r = { ...r, external: true, sourceLabel: r.sourceLabel || t.sourceLabel || 'fremden Quellen' };
+        }
         return markOrigin(r, ctx || {});
       } catch (e) {
         return { ok: false, message: `Werkzeug „${name}“ ist fehlgeschlagen: ${e.message || e}` };
@@ -64,8 +73,13 @@ export function createToolRegistry(tools = []) {
   };
 }
 
-/** Ergebnis als kurzen Text für die KI / den Chat. */
-export function resultToText(r) {
+/**
+ * Ergebnis als kurzen Text für die KI / den Chat.
+ * forModel: fremde Werkzeug-Texte werden eingezäunt, damit sie keine Befehle sind.
+ */
+export function resultToText(r, opts = {}) {
   if (!r) return 'Keine Antwort vom Werkzeug.';
-  return r.message || (r.ok ? 'Erledigt.' : 'Fehlgeschlagen.');
+  const text = r.message || (r.ok ? 'Erledigt.' : 'Fehlgeschlagen.');
+  if (opts.forModel && r.external) return fenceUntrusted(r.sourceLabel || 'werkzeug', text);
+  return text;
 }

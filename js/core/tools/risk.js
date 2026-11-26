@@ -1,4 +1,5 @@
 // v0.9 W0 – Risikoklassen für alle Werkzeuge und die zentrale Bestätigungsregel.
+// v0.10: Wer befehlen darf, steht in guard.js. Diese Datei bleibt die Karten-Regel nach fremden Daten.
 //
 //   lesen      – liest nur (Akku, Wetter, Notizen anzeigen, Status)
 //   lokal      – harmlos und sofort umkehrbar (Vibration, Taschenlampe, Lautstärke, Jarvis-Timer)

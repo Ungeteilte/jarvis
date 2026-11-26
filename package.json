@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Jarvis – deutschsprachiger Sprachassistent (PWA). Kein Build-Schritt nötig.",
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test tests/*.mjs",
     "serve": "python3 -m http.server 8080"
   }
 }
