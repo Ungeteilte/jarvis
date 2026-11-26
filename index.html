@@ -304,7 +304,7 @@
         <div class="grp-body">
           <fieldset id="memory-fieldset">
             <legend>Gedächtnis</legend>
-            <p class="hint">Was Jarvis über Sie weiß. Per Sprache: „Merk dir, dass …“, „Was weißt du über mich?“, „Vergiss, dass …“, „Vergiss das“ (direkt danach). Notizen („Notiere …“, „Schreib auf …“) sind getrennt.</p>
+            <p class="hint">Was Jarvis über Sie weiß. Per Sprache: „Merk dir, dass …“, „Was weißt du über mich?“, „Vergiss, dass …“, „Vergiss das“ (direkt danach). Kurze Notizen („Notiere …“, „Schreib auf …“) und das Archiv („Leg auf Todos …“) sind davon getrennt.</p>
             <label class="switch"><input id="set-mem-ai" type="checkbox"> Gedächtnis an die KI senden (passende Einträge bei jeder KI-Frage)</label>
             <p class="hint">⚠️ Beim kostenlosen Gemini-Zugang darf Google Eingaben laut seinen Bedingungen zur Verbesserung seiner Dienste nutzen, auch durch menschliche Prüfer. Schalten Sie das aus, wenn Ihnen das zu viel ist – „Was weißt du über mich?“ funktioniert trotzdem. Passwörter, PINs, IBAN und Kartennummern speichert Jarvis nie.</p>
             <p class="hint web-only">Im Browser liegt das Gedächtnis unverschlüsselt (localStorage); andere Seiten unter ungeteilte.github.io könnten es lesen. In der Android-App ist es verschlüsselt.</p>
@@ -331,12 +331,56 @@
           </fieldset>
           <fieldset id="notes-fieldset">
             <legend>Notizen</legend>
-            <p class="hint">„Notiere …“, „Lies meine Notizen vor“, „Lösche die Notiz …“; „Rückgängig“ holt Gelöschtes 2 Minuten lang zurück.</p>
+            <p class="hint">Kurze Notizen, getrennt vom Gedächtnis und vom Archiv. „Notiere …“, „Lies meine Notizen vor“, „Lösche die Notiz …“; „Rückgängig“ holt Gelöschtes 2 Minuten lang zurück. Längere Listen gehören ins Archiv („Leg auf Todos …“).</p>
             <div class="row wrap">
               <button id="btn-shownotes" type="button" class="btn">Notizen anzeigen</button>
               <button id="btn-clearnotes" type="button" class="btn danger">Notizen löschen</button>
             </div>
             <pre id="notes-view" class="notes hidden"></pre>
+          </fieldset>
+        </div>
+      </details>
+      <details class="set-group" id="grp-archive">
+        <summary><span class="grp-icon" aria-hidden="true">📁</span><span class="grp-text"><span class="grp-title">Archiv</span><span class="grp-sub">Termine, Todos, Wissen – getrennt von Notiz und Gedächtnis</span></span></summary>
+        <div class="grp-body">
+          <fieldset id="archive-fieldset">
+            <legend>Archiv</legend>
+            <p class="hint">Zusätzlich zum Gedächtnis und zu den kurzen Notizen. Fächer: Termine, Notizen, Projekte, Ideen, Entscheidungen, Todos, Verläufe, Lektionen, Wissen. Ein Archiv-Todo ist keine kurze Notiz und kein Gedächtnis-Fakt. Per Sprache: „Leg auf Todos …“, „Was ist noch offen?“, „Todo erledigt: …“, „Archiv sichern“.</p>
+            <label class="switch"><input id="set-arch-ai" type="checkbox"> Passende Ausschnitte an die KI senden (nie das ganze Archiv)</label>
+            <p class="hint">Passwörter, PINs, IBAN, Kartennummern und Schlüssel speichert Jarvis nicht. An die KI gehen nur zur Frage passende, eingezäunte Ausschnitte.</p>
+            <p class="hint web-only">Im Browser liegt das Archiv unverschlüsselt (localStorage). In der Android-App ist es verschlüsselt. Eine Sicherung bei Google bleibt aus – zum Handywechsel „Archiv sichern“ und später wiederherstellen.</p>
+            <label>Fach
+              <select id="arch-fach"></select>
+            </label>
+            <label>Status
+              <select id="arch-status"></select>
+            </label>
+            <label>Quelle
+              <select id="arch-quelle"></select>
+            </label>
+            <label>Frist (optional)
+              <input id="arch-frist" type="date">
+            </label>
+            <textarea id="arch-new" rows="3" maxlength="3000" placeholder="z. B. Steuererklärung abgeben"></textarea>
+            <div class="row wrap">
+              <button id="btn-arch-add" type="button" class="btn">Ins Archiv legen</button>
+            </div>
+            <p id="arch-status-msg" class="hint" aria-live="polite"></p>
+            <div class="row wrap">
+              <label>Fach filtern <select id="arch-filter-fach"></select></label>
+              <label>Status filtern <select id="arch-filter-status"></select></label>
+            </div>
+            <input id="arch-search" type="search" placeholder="Im Archiv suchen" maxlength="200">
+            <ul id="arch-list" class="mem-list"></ul>
+            <div class="row wrap">
+              <button id="btn-arch-export" type="button" class="btn">Archiv sichern (JSON)</button>
+              <button id="btn-arch-export-txt" type="button" class="btn">Als Text</button>
+            </div>
+            <details id="arch-import-box">
+              <summary>Wiederherstellen (JSON einfügen)</summary>
+              <textarea id="arch-import" rows="4" placeholder='{"jarvisArchive":1,"items":[{"fach":"todos","text":"…"}]}'></textarea>
+              <button id="btn-arch-import" type="button" class="btn">Wiederherstellen</button>
+            </details>
           </fieldset>
         </div>
       </details>
@@ -412,7 +456,7 @@
           <fieldset id="privacy-fieldset">
             <legend>Daten &amp; Datenschutz</legend>
             <ul class="guide-list">
-              <li>API-Schlüssel, Notizen, Gedächtnis und Erinnerungen bleiben auf diesem Gerät (in der Android-App verschlüsselt).</li>
+              <li>API-Schlüssel, Notizen, Gedächtnis, Archiv und Erinnerungen bleiben auf diesem Gerät (in der Android-App verschlüsselt). Eine Sicherung bei Google bleibt aus; das Archiv nehmen Sie als Datei mit.</li>
               <li>Ins Netz gehen nur: Ihre Fragen an den gewählten KI-Anbieter, Wetter (open-meteo.com), Nachrichten (tagesschau.de) und – in der App – Updates von github.com/Ungeteilte/jarvis.</li>
               <li>Links öffnet Jarvis nie von selbst, sondern erst nach Ihrem „Ja“. Auf der Karte steht die vollständige Adresse.</li>
               <li>Befehle gelten nur, wenn Sie sie hier tippen oder sprechen. Texte aus E-Mails, Dateien, Webseiten, dem Kalender und anderen Quellen sind Daten und lösen allein nichts aus. Schlägt Jarvis danach etwas vor, zeigt die Karte genau, was passieren würde.</li>
@@ -425,7 +469,7 @@
       <div class="settings-save">
         <button type="submit" class="btn primary">Speichern</button>
       </div>
-      <p id="app-version" class="hint center">Jarvis 0.10.0</p>
+      <p id="app-version" class="hint center">Jarvis 0.11.0</p>
     </form>
   </section>
 

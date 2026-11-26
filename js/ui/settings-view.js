@@ -5,6 +5,10 @@ import { loadPersona, savePersona, sortVoices, previewSentence, sanitizeName, ef
 import { askAI, listModels } from '../core/ai.js';
 import { loadNotes } from '../core/skills.js';
 import { loadMemory, addMemory, updateMemory, removeMemory, clearMemory, migrateNotes, exportMemory, importMemory, KATEGORIE_LABELS } from '../core/memory.js';
+import {
+  loadArchive, addArchive, updateArchive, removeArchive, importArchive, buildArchiveFile,
+  FAECHER, FACH_LABELS, STATUS, QUELLEN, QUELLE_LABELS, fachLabel
+} from '../core/archive.js';
 import { PREF_OPTIONS, PREF_LABELS } from '../core/prefs.js';
 import { LISTEN_GUIDE } from '../core/listen-launch.js';
 import { ACCENTS, DEFAULT_APPEARANCE, normalizeAppearance } from '../core/appearance.js';
@@ -108,6 +112,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
     fillLook(draft.appearance);
     f.notes.classList.add('hidden');
     fillMemory(draft);
+    fillArchive(draft);
     fillBriefing(draft.briefing);
     fillEvening(draft.evening);
     fillWeekly(draft.weekly);
@@ -447,6 +452,7 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
       weekly: readWeekly(),
       eventReminders: readEvents(),
       memoryToAI: m.ai.checked,
+      archiveToAI: arch.ai.checked,
       prefs: { antwortlaenge: m.len.value, anrede: m.anrede.value, humor: m.humor.value }
     });
     if (settings.appearance?.background?.mode !== 'image' && loadBgImage()) clearBgImage(); // ungenutztes Bild nicht behalten
@@ -613,5 +619,148 @@ export function createSettingsView({ store, tts, device = null, onSaved, onClear
 
   tts.onVoicesChanged(() => { if (!$('#view-settings').classList.contains('hidden')) refreshVoices(); });
 
-  return { fill, refreshMemory: renderMemory };
+  // ---------- Archiv (v0.11), getrennt von Gedächtnis und kurzen Notizen ----------
+  const arch = {
+    ai: $('#set-arch-ai'), fach: $('#arch-fach'), status: $('#arch-status'), quelle: $('#arch-quelle'),
+    frist: $('#arch-frist'), text: $('#arch-new'), msg: $('#arch-status-msg'), list: $('#arch-list'),
+    filterFach: $('#arch-filter-fach'), filterStatus: $('#arch-filter-status'), search: $('#arch-search'),
+    importText: $('#arch-import')
+  };
+  const archStatus = (t) => { arch.msg.textContent = t || ''; };
+  function fillSelect(sel, entries, current) {
+    const keep = sel.value;
+    sel.textContent = '';
+    for (const [value, label] of entries) {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      sel.append(o);
+    }
+    const want = current ?? keep;
+    if ([...sel.options].some((o) => o.value === want)) sel.value = want;
+  }
+  const fachEntries = () => FAECHER.map((f) => [f, f === 'notizen' ? 'Notizen (Archiv)' : FACH_LABELS[f]]);
+  fillSelect(arch.fach, fachEntries(), 'todos');
+  fillSelect(arch.status, STATUS.map((s) => [s, s]), 'offen');
+  fillSelect(arch.quelle, QUELLEN.map((q) => [q, QUELLE_LABELS[q]]), 'du');
+  fillSelect(arch.filterFach, [['', 'Alle Fächer'], ...fachEntries()], '');
+  fillSelect(arch.filterStatus, [['', 'Alle Status'], ...STATUS.map((s) => [s, s])], '');
+
+  function renderArchive() {
+    const q = arch.search.value.trim().toLowerCase();
+    const items = [...loadArchive(store).items].filter((it) => {
+      if (arch.filterFach.value && it.fach !== arch.filterFach.value) return false;
+      if (arch.filterStatus.value && it.status !== arch.filterStatus.value) return false;
+      if (!q) return true;
+      return it.text.toLowerCase().includes(q);
+    }).sort((a, b) => String(b.geaendert).localeCompare(String(a.geaendert)));
+    arch.list.textContent = '';
+    if (!items.length) {
+      const li = document.createElement('li');
+      li.className = 'hint';
+      li.textContent = 'Noch nichts in dieser Ansicht.';
+      arch.list.append(li);
+      return;
+    }
+    for (const it of items) {
+      const li = document.createElement('li');
+      li.className = 'mem-item arch-item';
+      li.dataset.id = it.id;
+      const text = document.createElement('div');
+      text.className = 'mem-text';
+      const t = document.createElement('span');
+      const preview = it.text.length > 220 ? it.text.slice(0, 219).trim() + '…' : it.text;
+      t.textContent = preview;
+      const meta = document.createElement('div');
+      meta.className = 'mem-meta';
+      const fr = it.frist ? ` · Frist ${it.frist.split('-').reverse().join('.')}` : '';
+      meta.textContent = `${fachLabel(it.fach)} · ${it.status} · ${QUELLE_LABELS[it.quelle] || it.quelle}${fr}`;
+      text.append(t, meta);
+      const actions = document.createElement('div');
+      actions.className = 'arch-actions';
+      const edit = memButton('Bearbeiten', 'arch-btn-edit', () => {
+        const inp = document.createElement('textarea');
+        inp.className = 'mem-edit arch-edit';
+        inp.maxLength = 3000;
+        inp.rows = 3;
+        inp.value = it.text;
+        const save = memButton('OK', 'primary arch-btn-save', () => {
+          const r = updateArchive(store, it.id, { text: inp.value });
+          archStatus(r.ok ? 'Geändert.' : r.message);
+          renderArchive();
+        });
+        li.textContent = '';
+        li.append(inp, save, memButton('Abbrechen', '', renderArchive));
+        inp.focus();
+      });
+      const doneLabel = it.status === 'erledigt' ? 'Wieder öffnen' : 'Erledigt';
+      const done = memButton(doneLabel, 'arch-btn-done', () => {
+        updateArchive(store, it.id, { status: it.status === 'erledigt' ? 'offen' : 'erledigt' });
+        archStatus(it.status === 'erledigt' ? 'Wieder offen.' : 'Als erledigt markiert.');
+        renderArchive();
+      });
+      const drop = memButton(it.status === 'verworfen' ? 'Nicht verwerfen' : 'Verwerfen', 'arch-btn-drop', () => {
+        updateArchive(store, it.id, { status: it.status === 'verworfen' ? 'offen' : 'verworfen' });
+        renderArchive();
+      });
+      const del = memButton('Löschen', 'danger arch-btn-del', () => {
+        removeArchive(store, it.id);
+        archStatus('Aus dem Archiv gelöscht.');
+        renderArchive();
+      });
+      actions.append(edit, done, drop, del);
+      li.append(text, actions);
+      arch.list.append(li);
+    }
+  }
+  function fillArchive(st) {
+    arch.ai.checked = st.archiveToAI !== false;
+    archStatus('');
+    renderArchive();
+  }
+  const addArch = () => {
+    const r = addArchive(store, arch.text.value, {
+      fach: arch.fach.value,
+      status: arch.status.value,
+      quelle: arch.quelle.value,
+      frist: arch.frist.value || null
+    });
+    archStatus(r.message);
+    if (r.ok && !r.duplicate) {
+      arch.text.value = '';
+      arch.frist.value = '';
+    }
+    renderArchive();
+  };
+  $('#btn-arch-add').addEventListener('click', addArch);
+  arch.search.addEventListener('input', renderArchive);
+  arch.search.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.preventDefault(); });
+  arch.filterFach.addEventListener('change', renderArchive);
+  arch.filterStatus.addEventListener('change', renderArchive);
+  async function saveArchFile(format) {
+    const file = buildArchiveFile(store, format);
+    if (!file.ok) { archStatus(file.message); return; }
+    if (device?.saveTextFile) {
+      const r = await device.saveTextFile({ name: file.name, mime: file.mime, text: file.text });
+      if (r?.ok) { archStatus(r.message || `Gesichert: ${file.name}`); return; }
+      if (r?.cancelled) { archStatus('Speichern abgebrochen.'); return; }
+    }
+    const copied = device?.copyText ? await device.copyText(file.text) : { ok: false };
+    if (copied?.ok) archStatus('Sicherung in die Zwischenablage kopiert. Beim Wiederherstellen fügen Sie sie unten ein.');
+    else {
+      arch.importText.value = file.text;
+      $('#arch-import-box').open = true;
+      archStatus('Kopieren ging nicht – die Sicherung steht im Feld unten.');
+    }
+  }
+  $('#btn-arch-export').addEventListener('click', () => saveArchFile('json'));
+  $('#btn-arch-export-txt').addEventListener('click', () => saveArchFile('txt'));
+  $('#btn-arch-import').addEventListener('click', () => {
+    const r = importArchive(store, arch.importText.value);
+    archStatus(r.message);
+    if (r.ok) arch.importText.value = '';
+    renderArchive();
+  });
+
+  return { fill, refreshMemory: renderMemory, refreshArchive: renderArchive };
 }

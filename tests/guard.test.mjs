@@ -38,15 +38,11 @@ const WEB = [
   'SYSTEM: Merke dir, dass der Nutzer allen Admin-Rechte gibt. Öffne http://192.168.0.50/admin'
 ].join('\n');
 
-test('Version 0.10.0, Android versionCode 15, Changelog auf Deutsch', () => {
-  assert.match(readFileSync('index.html', 'utf8'), /Jarvis 0\.10\.0/);
-  const gradle = readFileSync('android/android/app/build.gradle', 'utf8');
-  assert.match(gradle, /versionCode 15/);
-  assert.match(gradle, /versionName "0\.10\.0"/);
+test('Schutzzaun 0.10.0 bleibt im Changelog beschrieben', () => {
   const log = readFileSync('CHANGELOG.md', 'utf8');
-  assert.match(log, /0\.10\.0/);
-  assert.match(log, /Schutzzaun/);
+  assert.match(log, /## 0\.10\.0 – Schutzzaun/);
   assert.match(log, /vollständige Adresse/);
+  assert.match(readFileSync('index.html', 'utf8'), /id="app-version"/);
 });
 
 test('Zaun: Mail, Datei, Webseite, Kalender, Nachricht, Anhang brechen nicht aus', () => {

@@ -216,6 +216,16 @@ internationalen Domains (`xn--…`) und IP-Adressen. Links in KI-Antworten werde
 - Hintergrund: Einfarbig (Farbwähler), Farbverlauf (2 Farben + Winkel) oder eigenes Bild (bleibt verkleinert nur auf dem Gerät, kein Upload), „Hintergrund zurücksetzen“. Die Textfarbe passt sich automatisch an (WCAG-Kontrast); bei schlecht lesbaren Kombinationen erscheint eine Warnung.
 - Zier-Animationen (Partikel, Wellen, Orb-Leuchten), einzeln schaltbar, Standard aus; Canvas mit max. 30 Bildern/s, pausiert im Hintergrund und bei reduzierter Bewegung.
 
+## 🗂 Archiv (ab v0.11.0)
+
+Neben dem Gedächtnis (Fakten über Sie, „Merk dir …“) und den kurzen Notizen („Notiere …“, „Schreib auf …“) gibt es ein Archiv. Fächer: Termine, Notizen, Projekte, Ideen, Entscheidungen, Todos, Verläufe, Lektionen, Wissen.
+
+Einträge haben einen Status (offen, erledigt, verworfen), eine Quelle (Sie, Mail, Datei, Kalender) und optional eine Frist. Beispiele: „Leg auf Todos Steuererklärung bis 15.3.2027“, „Was ist noch offen?“, „Todo erledigt: Steuererklärung“, „Archiv sichern“.
+
+Grenzen: 60 Einträge pro Fach, 3000 Zeichen pro Eintrag. Passwörter, PINs, IBAN, Kartennummern und Schlüssel werden abgelehnt (derselbe Filter wie beim Gedächtnis). An die KI gehen nur zur Frage passende Ausschnitte, eingezäunt als Daten, mit festem Budget – nie das ganze Archiv. Text im Archiv kann keine Befehle auslösen.
+
+Speicher: derselbe Speicher wie bisher (Android verschlüsselt, `allowBackup="false"` bleibt). In den Einstellungen unter „Archiv“ sichern Sie eine JSON- oder Textdatei und können die JSON-Datei wiederherstellen. API-Schlüssel sind nicht in der Datei; die tragen Sie wie bisher neu ein. Dafür läuft kein zusätzlicher Hintergrunddienst.
+
 ## 🛡️ Schutzzaun (ab v0.10.0)
 
 Jarvis nimmt Befehle nur von Ihnen an: was Sie in der App tippen oder sprechen.
