@@ -6,6 +6,8 @@ import { isOwnerChannel, untrustedRefusal } from './guard.js';
 import { buildSystemPrompt } from './prompt.js';
 import { handleMemoryCommand } from './memory-commands.js';
 import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
+import { handleArchiveCommand } from './archive-commands.js';
+import { loadArchive, addArchive, updateArchive, buildArchiveFile, promptArchive } from './archive.js';
 import { voiceAnswer, CONFIRM_TTL_MS } from './confirm-voice.js';
 import { pickChoice } from './app-match.js';
 import { buildExport } from './files.js';
@@ -42,7 +44,9 @@ export const FOLLOW_UP_TOOLS = new Set([
   // zeigt die zentrale Regel (risk 'schreiben') vorher eine Karte mit Herkunftshinweis
   'set_alarm', 'set_reminder',
   // v0.9: nur lesend bzw. immer mit eigener Karte
-  'list_reminders', 'get_device_status', 'add_calendar_event'
+  'list_reminders', 'get_device_status', 'add_calendar_event',
+  // v0.11: Archiv nur lesen; Schreiben bleibt auf der Ja-Karte des Besitzers
+  'list_archive'
 ]);
 
 export function createAssistant({ store, timers, device, fetchFn, now = () => new Date(), registry, transport, stream = true, timeZone } = {}) {
@@ -114,6 +118,22 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         const n = clearMemory(store);
         lastAdded = null;
         return add('assistant', `Erledigt. ${n === 1 ? 'Ein Eintrag ist' : n + ' Einträge sind'} gelöscht. Notizen bleiben erhalten.`, { source: 'skill', memoryChanged: true });
+      }
+      case 'addArchive': {
+        const r = addArchive(store, action.text, { fach: action.fach, quelle: action.quelle || 'du', frist: action.frist, now: now() });
+        return add('assistant', r.message, { source: 'skill', archiveChanged: r.ok || undefined });
+      }
+      case 'archiveStatus': {
+        const r = updateArchive(store, action.id, { status: action.status }, now());
+        return add('assistant', r.message, { source: 'skill', archiveChanged: r.ok || undefined });
+      }
+      case 'exportArchive': {
+        if (!device?.saveTextFile) return add('assistant', 'Dateien speichern geht hier leider nicht. In den Einstellungen unter „Archiv“ können Sie die Sicherung kopieren.', { source: 'system', unsupported: true });
+        const ex = buildArchiveFile(store, action.format || 'json', now());
+        if (!ex.ok) return add('assistant', ex.message, { source: 'tool', tool: 'export_archive' });
+        const r = await device.saveTextFile({ name: ex.name, mime: ex.mime, text: ex.text });
+        const msg = r?.ok ? (r.message || `Archiv gesichert: ${ex.what} in „${r.name || ex.name}“.`) : (r?.cancelled ? 'Sichern abgebrochen.' : (r?.message || 'Sichern hat nicht geklappt.'));
+        return add('assistant', msg, { source: 'tool', tool: 'export_archive', error: r?.ok || r?.cancelled ? undefined : true });
       }
       case 'runTool': {
         // Zentrale Karte (v0.9 W0): genau den bestätigten Aufruf ausführen – confirmed überspringt die Regel einmalig
@@ -383,6 +403,15 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
         }
       }
 
+      // 0c-archiv) Archiv („Leg auf Todos …“, „Was ist noch offen?“, „Archiv sichern“) – nicht Gedächtnis, nicht kurze Notizen
+      const ac = handleArchiveCommand(input, { store, now: now() });
+      if (ac) {
+        const meta = { source: 'skill' };
+        if (ac.confirm) meta.confirm = ac.confirm;
+        if (ac.archiveChanged) meta.archiveChanged = true;
+        return add('assistant', ac.text, meta);
+      }
+
       // 0c) Gedächtnis und Vorlieben („Merk dir …“, „Vergiss, dass …“, „Was weißt du über mich?“, „Antworte kürzer“)
       const mc = handleMemoryCommand(input, { store, now: now(), lastAdded });
       if (mc) {
@@ -432,9 +461,16 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
           { source: 'system' });
       }
       const st = loadSettings(store);
+      const archiveItems = st.archiveToAI ? loadArchive(store).items : [];
+      const shownArch = promptArchive(archiveItems, input);
+      // Archivtext ist Daten: sobald ein Ausschnitt im Prompt steht, gelten Schreib-Werkzeuge nur noch mit Karte.
+      if (shownArch.included) {
+        c.turn.external = true;
+        (c.turn.sources ||= new Set()).add('dem Archiv');
+      }
       let system = buildSystemPrompt({
         name: c.name, now: c.now, notes: loadNotes(store), tools: tools.helpLines(), timeZone,
-        prefs: st.prefs, memory: st.memoryToAI ? loadMemory(store).items : [], query: input
+        prefs: st.prefs, memory: st.memoryToAI ? loadMemory(store).items : [], archive: archiveItems, query: input
       });
       let loopTools = tools;
       if (recent) {

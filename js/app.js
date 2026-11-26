@@ -304,6 +304,7 @@ async function runTurn(exec, { status = 'Einen Moment …' } = {}) {
     view.addMessage(reply);
     if (reply.confirmResolved) { openCards.get(reply.confirmResolved)?.closeCard?.(); openCards.delete(reply.confirmResolved); }
     if (reply.memoryChanged && !$('#view-settings').classList.contains('hidden')) settingsView.refreshMemory();
+    if (reply.archiveChanged && !$('#view-settings').classList.contains('hidden')) settingsView.refreshArchive();
     if (reply.confirm) attachCard(reply);
     view.setStatus(reply.error ? 'Es gab ein Problem.' : '');
     await say(reply.text);

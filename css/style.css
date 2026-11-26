@@ -180,6 +180,10 @@ html.jarvis-native .web-only { display: none !important; }
 .mem-item .mem-meta { font-size: 0.75rem; color: var(--muted); }
 .mem-item input.mem-edit { flex: 1; }
 .mem-item .btn { padding: 4px 8px; font-size: 0.8rem; }
+.arch-item { flex-wrap: wrap; align-items: flex-start; }
+.arch-item .mem-text { flex: 1 1 12rem; }
+.arch-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+#arch-new, #arch-import, #arch-search { width: 100%; }
 #mem-import { width: 100%; box-sizing: border-box; }
 .ressorts { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .ressorts label { display: inline-flex; align-items: center; gap: 6px; }

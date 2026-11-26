@@ -61,6 +61,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   weekly: DEFAULT_WEEKLY, // v0.9.3: Wochenrückblick sonntags (ersetzt dann die Abendzusammenfassung)
   eventReminders: DEFAULT_EVENT_REMINDERS, // v0.9.4: Termin-Hinweise vor Kalender-Terminen (nur Android-App)
   memoryToAI: true, // Gedächtnis-Einträge mit an die KI senden (abschaltbar)
+  archiveToAI: true, // passende Archiv-Ausschnitte an die KI (nie das ganze Archiv, abschaltbar)
   prefs: DEFAULT_PREFS,
   answerTempo: 'fast', // v0.9.6: Antwort-Tempo (Schnell = wenig Nachdenken bei Gemini)
   followUp: DEFAULT_FOLLOW_UP, // v0.9.6: Nachfrage-Modus (nach der Antwort kurz weiter zuhören)
@@ -84,6 +85,7 @@ export function loadSettings(store) {
     weekly: normalizeWeeklyConfig(s.weekly),
     eventReminders: normalizeEventRemindersConfig(s.eventReminders),
     memoryToAI: typeof s.memoryToAI === 'boolean' ? s.memoryToAI : DEFAULT_SETTINGS.memoryToAI,
+    archiveToAI: typeof s.archiveToAI === 'boolean' ? s.archiveToAI : DEFAULT_SETTINGS.archiveToAI,
     prefs: normalizePrefs(s.prefs),
     answerTempo: ANSWER_TEMPOS.includes(s.answerTempo) ? s.answerTempo : DEFAULT_SETTINGS.answerTempo,
     followUp: normalizeFollowUpConfig(s.followUp),

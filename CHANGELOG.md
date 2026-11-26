@@ -1,5 +1,19 @@
 # Änderungen
 
+## 0.11.0 – Strukturiertes Archiv
+
+Zusätzlich zum Gedächtnis und zu den kurzen Notizen gibt es ein Archiv mit den Fächern Termine, Notizen, Projekte, Ideen, Entscheidungen, Todos, Verläufe, Lektionen und Wissen.
+
+Jeder Eintrag hat einen Status (offen, erledigt oder verworfen), eine Quelle (Sie, Mail, Datei oder Kalender) und auf Wunsch eine Frist. Sagen Sie zum Beispiel „Leg auf Todos Steuererklärung“, „Was ist noch offen?“ oder „Archiv sichern“.
+
+Das Archiv bleibt auf dem Gerät, im selben verschlüsselten Speicher wie bisher. Eine Sicherung bei Google bleibt aus. In den Einstellungen können Sie das Archiv als Datei sichern und später wiederherstellen – etwa beim Handywechsel. API-Schlüssel tragen Sie wie bisher neu ein.
+
+Passwörter, Kartennummern und Schlüssel speichert Jarvis nicht. An die KI gehen nur passende, eingezäunte Ausschnitte, nie das ganze Archiv. Text im Archiv ist nur eine Notiz, kein Befehl.
+
+Im Hintergrund läuft dafür nichts Neues.
+
+Android: versionCode 16.
+
 ## 0.10.0 – Schutzzaun
 
 Jarvis nimmt Befehle nur von Ihnen an: was Sie in der App tippen oder sprechen.
