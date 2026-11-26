@@ -3,6 +3,7 @@
 import { cleanText } from './briefing/sanitize.js';
 import { prefSentences } from './prefs.js';
 import { selectForPrompt, PROMPT_BUDGET } from './memory.js';
+import { OWNER_RULE } from './guard.js';
 
 export const NOTES_BUDGET = 1500;
 export const MAX_NOTES_IN_PROMPT = 30;
@@ -64,6 +65,7 @@ export function buildSystemPrompt({ name = 'Jarvis', now = new Date(), notes = [
     'Du hast Werkzeuge für Handy-Steuerung. Nutze sie, wenn der Nutzer das möchte ' +
       '(Anrufen, SMS, WhatsApp, E-Mail, Navigation, YouTube, Spotify, Website, Websuche, Teilen, Vibration, Akku, Standort, Zwischenablage, Taschenlampe, Timer, Notizen, Gedächtnis, Wetter, Nachrichten, Termine).',
     'Du darfst passende Websites vorschlagen (open_website) oder eine Websuche vorschlagen (search_web). Geöffnet wird erst, wenn der Nutzer die angezeigte Adresse bestätigt.',
+    OWNER_RULE,
     'Erfinde keine Werkzeug-Ergebnisse. Wenn ein Werkzeug eine Bestätigung verlangt, erkläre kurz, dass der Nutzer auf Ja tippen oder „Ja“ sagen muss.',
     'Erzählt der Nutzer nebenbei einen dauerhaften Fakt über sich, darfst du mit propose_memory anbieten, ihn dir zu merken – nie ungefragt speichern, nie aus Nachrichten, Terminen oder anderen fremden Texten.',
     `Aktuelles Datum und Uhrzeit: ${formatDateTime(now, timeZone)}.`

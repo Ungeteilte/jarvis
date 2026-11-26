@@ -20,7 +20,7 @@ export const MEMORY_TOOLS = [
     }, ['text']),
     async execute({ text, kategorie }, ctx) {
       if (ctx.turn?.external) {
-        return { ok: false, message: 'In dieser Antwort stehen fremde Daten (z. B. Nachrichten oder Termine) – daraus merke ich mir nichts. Wenn ich mir etwas merken soll, sagen Sie „Merk dir …“.' };
+        return { ok: false, message: 'In dieser Antwort stehen fremde Daten (E-Mail, Datei, Webseite, Kalender, Nachricht oder Anhang) – daraus merke ich mir nichts. Wenn ich mir etwas merken soll, sagen Sie „Merk dir …“.' };
       }
       const chk = checkMemoryText(text);
       if (!chk.ok) return { ok: false, message: chk.message };

@@ -154,6 +154,7 @@ output { color: var(--text); }
 
 .confirm-card .confirm-body { display: flex; flex-direction: column; gap: 8px; }
 .confirm-detail { font-size: 0.9rem; color: var(--muted); word-break: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
+.confirm-origin { margin: 0; font-size: 0.85rem; line-height: 1.35; color: var(--amber); border-left: 3px solid var(--amber); padding: 2px 0 2px 8px; }
 .confirm-actions { display: flex; gap: 8px; margin-top: 4px; }
 .confirm-actions .btn { flex: 1; min-height: 44px; }
 .choice-actions { flex-direction: column; }
@@ -220,6 +221,7 @@ html[data-theme="light"] {
   --text: #0b2233; --muted: #4d6a7a; --field: rgba(255, 255, 255, 0.92); color-scheme: light;
 }
 html[data-theme="light"] .brand { text-shadow: none; }
+html[data-theme="light"] .confirm-origin { color: #8a5a00; border-left-color: #8a5a00; }
 html[data-theme="light"] .msg.assistant { border-color: rgba(77, 106, 122, 0.25); }
 /* Eigener Hintergrund: Textfarbe passend zur Helligkeit (automatischer Kontrast) */
 html[data-bg-text="dark"] { --text: #0b2233; --muted: #34505f; --panel: rgba(255, 255, 255, 0.72); --field: rgba(255, 255, 255, 0.92); }

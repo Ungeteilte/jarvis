@@ -2,6 +2,7 @@
 // Komplett browser-frei – UI und Sprachausgabe hängen sich nur an.
 
 import { handleSkill, loadNotes, parseClockTime, parseAlarmTime } from './skills.js';
+import { isOwnerChannel, untrustedRefusal } from './guard.js';
 import { buildSystemPrompt } from './prompt.js';
 import { handleMemoryCommand } from './memory-commands.js';
 import { loadMemory, addMemory, removeMemory, clearMemory } from './memory.js';
@@ -171,8 +172,9 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
       store, timers, device, registry: tools, fetchFn, timeZone,
       getHistory: () => [...history], // für export_file/share_file („Chat als Datei“)
       now: now(), name: persona.name, interactive: true,
+      channel: 'besitzer', // v0.10: nur der Besitzer (Tippen oder Sprechen) darf beauftragen
       // turn.external wird true, sobald ein Werkzeug fremde Daten liefert (registry.run); sources = Herkunft für Karten
-      turn: (() => { const ext = recentExternal(); return { external: ext, sources: new Set(ext ? ['vorherigen Antworten (Nachrichten, Wetter, Termine)'] : []) }; })()
+      turn: (() => { const ext = recentExternal(); return { external: ext, sources: new Set(ext ? ['vorherigen Antworten (E-Mail, Datei, Webseite, Kalender oder Nachrichten)'] : []) }; })()
     };
   }
 
@@ -279,9 +281,14 @@ export function createAssistant({ store, timers, device, fetchFn, now = () => ne
     /** Offene Karte (für Tests/UI). */
     pendingConfirm: () => (pending ? { ...pending } : null),
     /** Verarbeitet eine Nutzereingabe und gibt die Antwort-Nachricht zurück. */
-    async process(text, { onDelta, signal } = {}) {
+    async process(text, { onDelta, signal, channel } = {}) {
       const input = String(text || '').trim();
       if (!input) return null;
+      // v0.10: Mail, Datei, Webseite, Kalender, Nachricht, Anhang und Werkzeug-Text sind keine Befehle.
+      // Nicht in den Verlauf legen, keine Karte bestätigen, kein Werkzeug starten.
+      if (!isOwnerChannel(channel)) {
+        return add('assistant', untrustedRefusal(channel), { source: 'guard', blocked: true });
+      }
       const userMsg = add('user', input);
       // Offene Karte: kurzes gesprochenes „Ja“/„Nein“ bestätigt bzw. bricht ab; alles andere verwirft die Karte.
       if (pending) {

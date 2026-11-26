@@ -156,7 +156,7 @@ export function fillVoiceSelect(select, voices, selectedId) {
  * Bestätigungskarte (Ja/Nein) im Chat. onYes/onNo werden einmal aufgerufen.
  * Mit choices (v0.9, z. B. mehrere passende Apps): ein Knopf je Auswahl + „Abbrechen“; onChoose(index).
  */
-export function addConfirmCard({ title, detail, choices }, { onYes, onNo, onChoose }) {
+export function addConfirmCard({ title, detail, choices, origin }, { onYes, onNo, onChoose }) {
   const chat = els().chat;
   const div = document.createElement('div');
   div.className = 'msg assistant confirm-card';
@@ -168,11 +168,20 @@ export function addConfirmCard({ title, detail, choices }, { onYes, onNo, onChoo
   const h = document.createElement('strong');
   h.textContent = title || 'Fortfahren?';
   body.append(h);
-  if (detail) {
+  // Herkunftshinweis (v0.10) als eigene Zeile, nicht doppelt im Detail.
+  let shown = detail || '';
+  if (origin && shown.endsWith(origin)) shown = shown.slice(0, shown.length - origin.length).replace(/\s+$/, '');
+  if (shown) {
     const d = document.createElement('div');
     d.className = 'confirm-detail';
-    d.textContent = detail;
+    d.textContent = shown;
     body.append(d);
+  }
+  if (origin) {
+    const o = document.createElement('p');
+    o.className = 'confirm-origin';
+    o.textContent = origin;
+    body.append(o);
   }
   const row = document.createElement('div');
   row.className = 'confirm-actions';
